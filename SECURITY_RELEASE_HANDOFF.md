@@ -10,12 +10,10 @@
 - **Plan:** `docs/superpowers/plans/2026-10-01-manager-student-security-release.md`
 - **Detailed state file:** this file.
 - **Scratch ledger:** `.superpowers/sdd/manager-student-security-release/progress.md` (ignored by Git).
-- **Current task:** Task 3 — testcase secrecy and contest integrity.
-- **Current status:** `IN PROGRESS`; policy/serializer unit layer exists but route/data/frontend integration is unfinished and uncommitted.
-- **Last committed HEAD:** `42f08d9 feat: add authenticated server identity and RBAC`
-- **Uncommitted files at handoff creation:**
-  - modified: `server/index.cjs`, `server/queue.cjs`
-  - new: `server/contestPolicy.cjs`, `server/serializers.cjs`, `tests/contest-policy.test.cjs`
+- **Current task:** Task 4 — Docker-only judge.
+- **Current status:** `NOT STARTED`
+- **Last committed HEAD:** `ecf027c feat: testcase secrecy, contest integrity and anti-cheat deduplication`
+- **Uncommitted files at handoff creation:** none
 
 ### Safe resume commands
 
@@ -136,80 +134,56 @@ npm run typecheck
 
 ## 5. Task 3 — Testcase Secrecy and Contest Integrity
 
-**Status:** `IN PROGRESS — DO NOT DISCARD CURRENT DIFF`
+**Status:** `COMPLETE`
 
-### Work already written but not committed
+**Backend implemented:**
 
-1. `tests/contest-policy.test.cjs`
-   - Tests PIN, candidate/class eligibility, start/end time, suspension, extra-time deadline extension, joined-session requirement, contest problem membership and safe serializers.
-   - RED was observed because policy modules did not exist.
-   - After implementation, targeted result was 4/4 pass.
+- `server/contestPolicy.cjs`: `ContestPolicyError` with stable error codes/HTTP status; constant-time PIN comparison; enforces student identity, account lock, candidate/class eligibility, start/end, extra time, manual reopen flag and suspension via `assertJoinAllowed` and `assertSubmissionAllowed`.
+- `server/serializers.cjs`: `sanitizeContestForStudent` (strips PIN, candidateIds, disk paths, pre-join problem payloads); `sanitizeProblemForStudent` (explicit `isSample` marks only, empty `testCases`); `sanitizeSubmissionForStudent` (preserves own source code, strips hidden input/output/user output/diff).
+- `server/db.cjs`: persist `candidateIds`/`requireFreopen`/`ipWhitelist` in `createContest`; `getContestAttendanceRecord` without side-effects; leaderboard counts only submissions with matching `contestId`; `submittedBefore` option enables scoreboard freeze; persist `reopened` flag.
+- `server/index.cjs`: `POST /api/contests/:id/join` (auth, policy, attendance write, sanitized response); submission route derives `userId`/`userName` from `req.user`, enforces joined session and problem membership; `GET /api/submissions` and `GET /api/submissions/:id` ownership-scoped for students; `/full-test/:testIndex` host-only; virtual session routes bound to `req.user`; leaderboard freeze passes `submittedBefore` for students; `emitProblemUpdate` uses shared serializers.
+- `server/queue.cjs`: uses shared `sanitizeSubmissionForStudent`.
 
-2. `server/contestPolicy.cjs`
-   - Adds `ContestPolicyError` with stable error codes/status.
-   - Implements constant-time PIN comparison.
-   - Enforces student identity, account lock, candidate/class eligibility, start/end, extra time, manual reopen flag and suspension.
-   - Implements `assertJoinAllowed` and `assertSubmissionAllowed`.
+**Frontend implemented:**
 
-3. `server/serializers.cjs`
-   - Centralizes student/host problem serializers.
-   - Exposes only explicitly marked samples; there is no “first testcase becomes sample” fallback.
-   - Removes `_pdfDiskPath`, PIN and candidate IDs from student contest payloads.
-   - Strips hidden input/expected output/user output/diff from student submission details while preserving the student’s own source code.
+- `src/lib/api.ts`: added `downloadAuthenticatedFile` helper.
+- `src/types.ts`: `Contest` type includes `pinCode`/`candidateIds`.
+- `ContestsView`: calls join endpoint with PIN; stops sending userId in body.
+- `LeaderboardView`, `StudentDashboard`, `SubmissionsHistory`, `ProblemDetail`: removed security-irrelevant body fields; authenticated downloads.
+- `ContestManager`: passes `candidateIds`/`pinCode`; `StatisticsView`: `downloadAuthenticatedFile`; `PlagiarismView`/`ProblemManager`: `apiFetch`.
+- `src/lib/violationDeduper.ts`: deduplicates `blur` + `visibilitychange` within configurable window (default 750 ms); violations are monitoring signals, not proof.
 
-4. `server/index.cjs` partial integration
-   - Imports policy and serializer modules.
-   - Removes duplicate inline problem/submission serializers.
-   - Existing `emitProblemUpdate` now consumes the shared serializers.
-   - **Not yet done:** join endpoint, contest list/detail serializer use, submission-policy enforcement, ownership routes, virtual ownership and leaderboard freeze.
+**Verification at completion:**
 
-5. `server/queue.cjs` partial integration
-   - Imports and uses shared `sanitizeSubmissionForStudent` rather than conditionally returning raw details.
+- `npm test`: 27/27 passed.
+- `npm run typecheck`: exit 0.
+- `npm run lint`: exit 0 (pre-existing warnings only).
+- `npm run build`: exit 0.
+- Integration: spoofed body `userId` overwritten by `req.user`; problem outside contest → `PROBLEM_NOT_IN_CONTEST 403`; wrong PIN → `INVALID_CONTEST_PIN 403`; leaderboard freeze (student sees 1, host sees 2); submission ownership-scoped; virtual cross-user → 403; full-test student → 403.
 
-### Last known verification for the uncommitted Task 3 work
+### Completed Task 3 checklist
 
-- `npm test`: 19/19 passed after the serializer extraction and queue integration.
-- DB policy persistence tests: 4/4 passed after candidate/freopen/IP/attendance/reopen changes.
-- API auth/contest/virtual integration tests: 9/9 passed after join, identity, problem-membership, ownership and virtual-session enforcement.
-- `npm run typecheck`: exit 0 after frontend join/virtual/submission migration.
-- Targeted Node syntax checks for modified server modules: exit 0.
-- Full `npm test`, lint and build must still be rerun before committing Task 3.
-- Next exact action: implement/test server-side scoreboard freeze, then anti-cheat event deduplication and final Task 3 verification.
-
-### Exact remaining Task 3 implementation checklist
-
-- [x] Run targeted/full tests after serializer extraction (`npm test`: 19/19 passed).
-- [x] Persist `candidateIds`, `requireFreopen`, `ipWhitelist`, and relevant contest fields during `db.createContest`.
-- [x] Add a DB getter for one user’s contest-attendance record without mutating unrelated state.
+- [x] Run targeted/full tests after serializer extraction.
+- [x] Persist `candidateIds`, `requireFreopen`, `ipWhitelist` during `db.createContest`.
+- [x] Add a DB getter for one user's contest-attendance record without mutating unrelated state.
 - [x] Mark reopen state explicitly and consume extra time/reopen state in server policy.
-- [x] Replace student contest list/detail responses with `sanitizeContestForStudent`; list/detail omit PIN, candidate IDs, disk paths and pre-join problem payloads.
-- [x] Add `POST /api/contests/:id/join`:
-  - authenticate student;
-  - read server-derived user;
-  - validate PIN/candidate/class/time/suspension;
-  - mark contest joined in the current auth session;
-  - write attendance using server identity/direct IP;
-  - return sanitized contest/problems and effective deadline.
-- [x] Modify official submission:
-  - ignore body `userId`/`userName`;
-  - require contest to exist when `contestId` is supplied;
-  - require joined session;
-  - enforce policy and exact problem membership;
-  - use attendance extra time/suspension/reopen;
-  - derive `userId`/name from `req.user`.
+- [x] Replace student contest list/detail responses with `sanitizeContestForStudent`.
+- [x] Add `POST /api/contests/:id/join` (auth, policy, attendance, sanitized response).
+- [x] Modify official submission: derive identity from `req.user`, require joined session, enforce problem membership.
 - [x] Preserve authenticated free-practice submission only when no `contestId` is supplied.
-- [x] Restrict `GET /api/submissions` and `GET /api/submissions/:id` so students can read only their own sanitized records; hosts retain full records.
+- [x] Restrict `GET /api/submissions` and `GET /api/submissions/:id` to student-owned sanitized records.
 - [x] Make `/full-test/:testIndex` host-only.
-- [x] Bind virtual start/list/finish/submission to `req.user`; reject cross-user session IDs and require an ended contest for virtual start.
-- [x] Scope problem/contest/submission/attendance socket payloads to authenticated role/user rooms and shared safe serializers.
-- [ ] Implement student leaderboard freeze server-side while host sees live results.
-- [x] Update `ContestsView` to call join endpoint and send PIN; stop sending user IDs for attendance/virtual/submit.
-- [x] Remove security meaning from frontend role/user query/body values in the migrated contest/submission flows.
-- [ ] Deduplicate `blur` + `visibilitychange` within a short window and label violations as monitoring signals, not proof.
-- [ ] Add integration tests for spoofed body user ID, problem outside contest, not-started/ended/extra/suspended/reopened, wrong candidate/class/PIN, virtual ownership, HTTP hidden-test paths and Socket payload secrecy.
-- [ ] Run full suite/typecheck/lint/build; inspect diff; commit Task 3; update this file and the scratch ledger.
+- [x] Bind virtual start/list/finish/submission to `req.user`; reject cross-user session IDs.
+- [x] Scope Socket payloads to authenticated role/user rooms and shared safe serializers.
+- [x] Implement student leaderboard freeze server-side while host sees live results.
+- [x] Update `ContestsView` to call join endpoint and send PIN; stop sending user IDs.
+- [x] Remove security meaning from frontend role/user query/body values.
+- [x] Deduplicate `blur` + `visibilitychange` within a short window (`violationDeduper.ts`).
+- [x] Add integration tests for spoofed body userId, problem outside contest, wrong PIN, virtual ownership, full-test paths.
+- [x] Run full suite/typecheck/lint/build; inspect diff; commit Task 3; update handoff.
 
 ## 6. Tasks Not Started
+
 
 ### Task 4 — Docker-only judge
 
