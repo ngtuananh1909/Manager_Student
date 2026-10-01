@@ -36,4 +36,20 @@ export async function apiFetch(input: RequestInfo | URL, init: RequestInit = {})
   return response;
 }
 
+export async function downloadAuthenticatedFile(url: string, fileName: string): Promise<void> {
+  const response = await apiFetch(url);
+  if (!response.ok) throw new Error(`Không thể tải file (HTTP ${response.status})`);
+  const objectUrl = URL.createObjectURL(await response.blob());
+  try {
+    const anchor = document.createElement('a');
+    anchor.href = objectUrl;
+    anchor.download = fileName;
+    document.body.appendChild(anchor);
+    anchor.click();
+    anchor.remove();
+  } finally {
+    URL.revokeObjectURL(objectUrl);
+  }
+}
+
 export { ACCESS_TOKEN_KEY, AUTH_CHANGED_EVENT };

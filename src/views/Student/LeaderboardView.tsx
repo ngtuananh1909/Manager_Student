@@ -28,7 +28,7 @@ export const LeaderboardView: React.FC = () => {
     try {
       const [lbRes, probRes] = await Promise.all([
         apiFetch(`${serverUrl}/api/leaderboard`),
-        apiFetch(`${serverUrl}/api/problems?role=user`)
+        apiFetch(`${serverUrl}/api/problems`)
       ]);
       if (lbRes.ok) setLeaderboard(await lbRes.json());
       if (probRes.ok) setProblems(await probRes.json());

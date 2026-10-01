@@ -92,3 +92,37 @@ test('user persistence accepts only pre-hashed passwords and can rotate the hash
     mustChangePassword: false
   });
 });
+
+test('contest persistence keeps security policy fields and exposes one attendance record', () => {
+  const result = runIsolated(`
+    const db = require(process.env.SCHOOLJUDGE_DB_MODULE);
+    const contest = db.createContest({
+      title: 'Secure contest',
+      candidateIds: ['usr-1'],
+      classIds: ['cls-1'],
+      problemIds: ['prob-1'],
+      pinCode: '2468',
+      requireFreopen: true,
+      ipWhitelist: '192.168.1.*'
+    });
+    db.updateContestAttendance(contest.id, 'usr-1', { status: 'suspended', extraMinutes: 7 });
+    const before = db.getContestAttendanceRecord(contest.id, 'usr-1');
+    db.reopenContestForUser(contest.id, 'usr-1');
+    const after = db.getContestAttendanceRecord(contest.id, 'usr-1');
+    process.stdout.write(JSON.stringify({
+      candidateIds: contest.candidateIds,
+      requireFreopen: contest.requireFreopen,
+      ipWhitelist: contest.ipWhitelist,
+      before,
+      after
+    }));
+  `);
+
+  assert.deepEqual(JSON.parse(result.output), {
+    candidateIds: ['usr-1'],
+    requireFreopen: true,
+    ipWhitelist: '192.168.1.*',
+    before: { status: 'suspended', extraMinutes: 7, reason: '', reopened: false },
+    after: { status: 'present', extraMinutes: 7, reason: '', reopened: true }
+  });
+});

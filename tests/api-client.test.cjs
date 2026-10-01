@@ -43,3 +43,27 @@ test('apiFetch clears an expired token after a 401 response', async () => {
   assert.equal(api.getAccessToken(), null);
   assert.equal(dispatched, true);
 });
+
+test('downloadAuthenticatedFile downloads a protected response through apiFetch', async () => {
+  global.sessionStorage = createStorage();
+  global.window = { dispatchEvent() {} };
+  let clicked = false;
+  let appended = false;
+  const anchor = { href: '', download: '', click() { clicked = true; }, remove() {} };
+  global.document = {
+    createElement() { return anchor; },
+    body: { appendChild() { appended = true; } }
+  };
+  global.URL.createObjectURL = () => 'blob:authenticated';
+  global.URL.revokeObjectURL = () => {};
+  global.fetch = async () => new Response('report', { status: 200 });
+
+  const api = await import('../src/lib/api.ts');
+  api.setAccessToken('opaque-token');
+  await api.downloadAuthenticatedFile('http://127.0.0.1:4000/api/export/csv', 'report.csv');
+
+  assert.equal(appended, true);
+  assert.equal(clicked, true);
+  assert.equal(anchor.href, 'blob:authenticated');
+  assert.equal(anchor.download, 'report.csv');
+});

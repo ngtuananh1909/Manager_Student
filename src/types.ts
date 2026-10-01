@@ -140,6 +140,7 @@ export interface Contest {
   gradingMode: 'direct' | 'batch_after_deadline'; // Chấm trực tiếp hay chấm sau khi hết giờ
   freezeScoreboardMinutes: number; // Đóng băng BXH trước khi hết giờ (phút)
   pinCode?: string;           // Mã PIN phòng thi
+  requiresPin?: boolean;      // Server-safe signal; the PIN value is never returned to students
   antiCheat: {
     preventTabSwitch: boolean;
     maxTabViolations: number;

@@ -650,6 +650,7 @@ class Database {
       mode: contest.mode || "offline", // "offline" = Mạng LAN phòng máy; "online" = Trực tuyến qua Internet
       totalScore: Number(contest.totalScore) || 100, // Tổng điểm toàn kỳ thi (mặc định 100)
       classIds: Array.isArray(contest.classIds) ? contest.classIds : [], // Array of class IDs allowed to take contest ([] = all)
+      candidateIds: Array.isArray(contest.candidateIds) ? contest.candidateIds : [],
       problemIds: Array.isArray(contest.problemIds) ? contest.problemIds : [], // Array of problem IDs in contest
       pdfUrl: contest.pdfUrl || "",
       pdfFileName: contest.pdfFileName || "",
@@ -663,6 +664,8 @@ class Database {
       freezeScoreboardMinutes: Number(contest.freezeScoreboardMinutes) || 15,
       pinCode: contest.pinCode ? String(contest.pinCode).trim() : "",
       hideTestDetailsForStudents: contest.hideTestDetailsForStudents !== false,
+      requireFreopen: !!contest.requireFreopen,
+      ipWhitelist: String(contest.ipWhitelist || '').trim(),
       antiCheat: {
         preventTabSwitch: contest.antiCheat?.preventTabSwitch !== false,
         maxTabViolations: Number(contest.antiCheat?.maxTabViolations) || 3,
@@ -701,11 +704,10 @@ class Database {
     return false;
   }
 
-  getContestLeaderboard(contestId, isVirtual = false) {
+  getContestLeaderboard(contestId, isVirtual = false, options = {}) {
     const contest = this.getContest(contestId);
     if (!contest) return [];
 
-    const problemIds = new Set(contest.problemIds || []);
     const allowedClasses = new Set(contest.classIds || []);
     
     // Filter users allowed for this contest
@@ -731,9 +733,14 @@ class Database {
 
     // Submissions for this contest: strictly separate official vs virtual!
     const contestSubs = this.data.submissions.filter(s => {
-      const matchContest = s.contestId === contestId || (!s.contestId && problemIds.has(s.problemId));
+      const matchContest = s.contestId === contestId;
       if (!matchContest) return false;
-      return isVirtual ? !!s.isVirtual : !s.isVirtual;
+      if (isVirtual ? !s.isVirtual : !!s.isVirtual) return false;
+      if (options.submittedBefore) {
+        const submittedAt = new Date(s.submittedAt).getTime();
+        if (!Number.isFinite(submittedAt) || submittedAt > options.submittedBefore) return false;
+      }
+      return true;
     });
 
     for (const sub of contestSubs) {
@@ -886,6 +893,19 @@ class Database {
   }
 
   // Contest Attendance & Candidate Whitelist
+  getContestAttendanceRecord(contestId, userId) {
+    const record = this.data.contest_attendance?.[contestId]?.[userId];
+    if (!record) return null;
+    return {
+      status: record.status || 'present',
+      extraMinutes: Number(record.extraMinutes) || 0,
+      reason: record.reason || '',
+      reopened: !!record.reopened,
+      ...(record.ip ? { ip: record.ip } : {}),
+      ...(record.lastActive ? { lastActive: record.lastActive } : {})
+    };
+  }
+
   getContestAttendance(contestId) {
     const contest = this.getContest(contestId);
     if (!contest) return [];
@@ -945,12 +965,13 @@ class Database {
     if (!this.data.contest_attendance) this.data.contest_attendance = {};
     if (!this.data.contest_attendance[contestId]) this.data.contest_attendance[contestId] = {};
     
-    const existing = this.data.contest_attendance[contestId][userId] || { status: 'present', extraMinutes: 0, reason: '' };
+    const existing = this.data.contest_attendance[contestId][userId] || { status: 'present', extraMinutes: 0, reason: '', reopened: false };
     if (data.status) existing.status = data.status;
     if (data.reason !== undefined) existing.reason = data.reason;
     if (data.extraMinutes !== undefined) existing.extraMinutes = Number(data.extraMinutes) || 0;
     if (data.ip) existing.ip = data.ip;
     if (data.lastActive) existing.lastActive = data.lastActive;
+    if (data.reopened !== undefined) existing.reopened = !!data.reopened;
 
     this.data.contest_attendance[contestId][userId] = existing;
     this.save();
@@ -961,7 +982,7 @@ class Database {
     if (!this.data.contest_attendance) this.data.contest_attendance = {};
     if (!this.data.contest_attendance[contestId]) this.data.contest_attendance[contestId] = {};
     
-    const existing = this.data.contest_attendance[contestId][userId] || { status: 'present', extraMinutes: 0, reason: '' };
+    const existing = this.data.contest_attendance[contestId][userId] || { status: 'present', extraMinutes: 0, reason: '', reopened: false };
     existing.extraMinutes = (existing.extraMinutes || 0) + Number(extraMinutes);
     this.data.contest_attendance[contestId][userId] = existing;
     this.save();
@@ -972,8 +993,9 @@ class Database {
     if (!this.data.contest_attendance) this.data.contest_attendance = {};
     if (!this.data.contest_attendance[contestId]) this.data.contest_attendance[contestId] = {};
     
-    const existing = this.data.contest_attendance[contestId][userId] || { status: 'present', extraMinutes: 0, reason: '' };
+    const existing = this.data.contest_attendance[contestId][userId] || { status: 'present', extraMinutes: 0, reason: '', reopened: false };
     existing.status = 'present';
+    existing.reopened = true;
     this.data.contest_attendance[contestId][userId] = existing;
 
     const vs = (this.data.virtual_sessions || []).find(v => v.contestId === contestId && v.userId === userId && v.status === 'completed');

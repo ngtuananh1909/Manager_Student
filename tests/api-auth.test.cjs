@@ -13,6 +13,14 @@ const db = require('../server/db.cjs');
 const { server } = require('../server/index.cjs');
 
 let baseUrl = '';
+let hostUser;
+let studentUser;
+let otherStudentUser;
+let contestRecord;
+let endedContestRecord;
+let freezeContestRecord;
+let contestProblem;
+let outsideProblem;
 
 async function request(pathname, options = {}) {
   const response = await fetch(`${baseUrl}${pathname}`, options);
@@ -37,13 +45,75 @@ before(async () => {
   const studentHash = await argon2.hash('student-password-123', {
     type: argon2.argon2id, memoryCost: 19 * 1024, timeCost: 2, parallelism: 1
   });
+  const otherStudentHash = await argon2.hash('other-password-123', {
+    type: argon2.argon2id, memoryCost: 19 * 1024, timeCost: 2, parallelism: 1
+  });
   const setup = db.setupFirstAdmin({
     username: 'host', fullName: 'Host', className: 'Tin 1', passwordHash: hostHash
   });
-  db.createUser({
+  hostUser = setup.admin;
+  studentUser = db.createUser({
     username: 'student', fullName: 'Student', role: 'user', classId: setup.defaultClass.id,
     passwordHash: studentHash
   });
+  otherStudentUser = db.createUser({
+    username: 'other', fullName: 'Other Student', role: 'user', classId: setup.defaultClass.id,
+    passwordHash: otherStudentHash
+  });
+  contestProblem = db.createProblem({
+    code: 'IN', title: 'Inside', points: 100,
+    testCases: [
+      { id: 'hidden', input: 'hidden-input', expectedOutput: 'hidden-output', isSample: false, score: 50 },
+      { id: 'sample', input: '1 2', expectedOutput: '3', isSample: true, score: 50 }
+    ]
+  });
+  outsideProblem = db.createProblem({
+    code: 'OUT', title: 'Outside', points: 100,
+    testCases: [{ id: 'outside', input: 'x', expectedOutput: 'y', isSample: false, score: 100 }]
+  });
+  contestRecord = db.createContest({
+    title: 'Secure contest',
+    startTime: new Date(Date.now() - 60_000).toISOString(),
+    endTime: new Date(Date.now() + 60 * 60_000).toISOString(),
+    status: 'running',
+    gradingMode: 'batch_after_deadline',
+    classIds: [setup.defaultClass.id],
+    candidateIds: [studentUser.id],
+    problemIds: [contestProblem.id],
+    pinCode: '2468'
+  });
+  endedContestRecord = db.createContest({
+    title: 'Ended contest',
+    startTime: new Date(Date.now() - 2 * 60 * 60_000).toISOString(),
+    endTime: new Date(Date.now() - 60 * 60_000).toISOString(),
+    status: 'ended',
+    durationMinutes: 30,
+    classIds: [setup.defaultClass.id],
+    problemIds: [contestProblem.id]
+  });
+  freezeContestRecord = db.createContest({
+    title: 'Frozen contest',
+    startTime: new Date(Date.now() - 60 * 60_000).toISOString(),
+    endTime: new Date(Date.now() + 10 * 60_000).toISOString(),
+    status: 'running',
+    freezeScoreboardMinutes: 15,
+    classIds: [setup.defaultClass.id],
+    problemIds: [contestProblem.id]
+  });
+  const visibleSubmission = db.createSubmission({
+    userId: studentUser.id, userName: studentUser.fullName,
+    problemId: contestProblem.id, problemCode: contestProblem.code,
+    contestId: freezeContestRecord.id, code: 'visible', totalTests: 2
+  });
+  db.updateSubmission(visibleSubmission.id, {
+    status: 'AC', score: 100, submittedAt: new Date(Date.now() - 10 * 60_000).toISOString()
+  });
+  const frozenSubmission = db.createSubmission({
+    userId: studentUser.id, userName: studentUser.fullName,
+    problemId: contestProblem.id, problemCode: contestProblem.code,
+    contestId: freezeContestRecord.id, code: 'frozen', totalTests: 2
+  });
+  db.updateSubmission(frozenSubmission.id, { status: 'AC', score: 100, submittedAt: new Date().toISOString() });
 
   await new Promise((resolve, reject) => {
     server.listen(0, '127.0.0.1', resolve);
@@ -91,7 +161,7 @@ test('host credentials can read settings without leaking password hashes from us
 
   const users = await request('/api/users', { headers });
   assert.equal(users.response.status, 200);
-  assert.equal(users.body.length, 2);
+  assert.equal(users.body.length, 3);
   assert.equal(users.body.some(user => 'passwordHash' in user), false);
 });
 
@@ -176,4 +246,138 @@ test('Socket.IO rejects anonymous identity and derives online role from the sess
   assert.equal(record.role, 'user');
   assert.equal(record.username, 'student');
   socket.close();
+});
+
+test('student contest responses hide privileged fields until a successful join', async () => {
+  const student = await login('student', 'student-password-123');
+  const headers = { Authorization: `Bearer ${student.accessToken}`, 'Content-Type': 'application/json' };
+
+  const list = await request('/api/contests', { headers });
+  assert.equal(list.response.status, 200);
+  const listed = list.body.find(item => item.id === contestRecord.id);
+  assert.equal('pinCode' in listed, false);
+  assert.equal('candidateIds' in listed, false);
+
+  const detail = await request(`/api/contests/${contestRecord.id}`, { headers });
+  assert.equal(detail.response.status, 200);
+  assert.equal(Array.isArray(detail.body.problems), false);
+
+  const wrongPin = await request(`/api/contests/${contestRecord.id}/join`, {
+    method: 'POST', headers, body: JSON.stringify({ pinCode: 'wrong' })
+  });
+  assert.equal(wrongPin.response.status, 403);
+  assert.equal(wrongPin.body.code, 'INVALID_CONTEST_PIN');
+
+  const joined = await request(`/api/contests/${contestRecord.id}/join`, {
+    method: 'POST', headers, body: JSON.stringify({ pinCode: '2468' })
+  });
+  assert.equal(joined.response.status, 200);
+  assert.equal(joined.body.problems.length, 1);
+  assert.deepEqual(joined.body.problems[0].testCases, []);
+  assert.equal(JSON.stringify(joined.body).includes('hidden-input'), false);
+  assert.equal(JSON.stringify(joined.body).includes('hidden-output'), false);
+});
+
+test('official submission derives identity and rejects a problem outside the joined contest', async () => {
+  const student = await login('student', 'student-password-123');
+  const headers = { Authorization: `Bearer ${student.accessToken}`, 'Content-Type': 'application/json' };
+  await request(`/api/contests/${contestRecord.id}/join`, {
+    method: 'POST', headers, body: JSON.stringify({ pinCode: '2468' })
+  });
+
+  const accepted = await request('/api/submissions', {
+    method: 'POST',
+    headers,
+    body: JSON.stringify({
+      userId: hostUser.id,
+      userName: 'Spoofed host',
+      problemId: contestProblem.id,
+      contestId: contestRecord.id,
+      code: 'int main(){return 0;}'
+    })
+  });
+  assert.equal(accepted.response.status, 200);
+  assert.equal(accepted.body.userId, studentUser.id);
+  assert.equal(accepted.body.userName, studentUser.fullName);
+
+  await new Promise(resolve => setTimeout(resolve, 2100));
+  const outside = await request('/api/submissions', {
+    method: 'POST',
+    headers,
+    body: JSON.stringify({
+      problemId: outsideProblem.id,
+      contestId: contestRecord.id,
+      code: 'int main(){return 0;}'
+    })
+  });
+  assert.equal(outside.response.status, 403);
+  assert.equal(outside.body.code, 'PROBLEM_NOT_IN_CONTEST');
+});
+
+test('student submission reads are ownership-scoped and full-test details are host-only', async () => {
+  db.createSubmission({
+    userId: hostUser.id,
+    userName: hostUser.fullName,
+    problemId: contestProblem.id,
+    problemCode: contestProblem.code,
+    code: 'host-secret-code',
+    totalTests: 2
+  });
+  const student = await login('student', 'student-password-123');
+  const studentHeaders = { Authorization: `Bearer ${student.accessToken}` };
+  const list = await request('/api/submissions', { headers: studentHeaders });
+  assert.equal(list.response.status, 200);
+  assert.equal(list.body.every(item => item.userId === studentUser.id), true);
+  assert.equal(JSON.stringify(list.body).includes('host-secret-code'), false);
+
+  const own = list.body[0];
+  const forbidden = await request(`/api/submissions/${own.id}/full-test/1`, { headers: studentHeaders });
+  assert.equal(forbidden.response.status, 403);
+});
+
+test('virtual sessions derive ownership and reject cross-user access', async () => {
+  const student = await login('student', 'student-password-123');
+  const other = await login('other', 'other-password-123');
+  const studentHeaders = { Authorization: `Bearer ${student.accessToken}`, 'Content-Type': 'application/json' };
+  const otherHeaders = { Authorization: `Bearer ${other.accessToken}`, 'Content-Type': 'application/json' };
+
+  const runningStart = await request(`/api/contests/${contestRecord.id}/virtual-start`, {
+    method: 'POST', headers: studentHeaders, body: JSON.stringify({ userId: otherStudentUser.id })
+  });
+  assert.equal(runningStart.response.status, 403);
+
+  const started = await request(`/api/contests/${endedContestRecord.id}/virtual-start`, {
+    method: 'POST', headers: studentHeaders,
+    body: JSON.stringify({ userId: otherStudentUser.id, userName: 'Spoofed' })
+  });
+  assert.equal(started.response.status, 200);
+  assert.equal(started.body.userId, studentUser.id);
+  assert.equal(started.body.userName, studentUser.fullName);
+
+  const otherList = await request(`/api/contests/${endedContestRecord.id}/virtual-sessions?userId=${studentUser.id}`, {
+    headers: otherHeaders
+  });
+  assert.equal(otherList.response.status, 200);
+  assert.equal(otherList.body.some(item => item.id === started.body.id), false);
+
+  const forbiddenFinish = await request(`/api/virtual-sessions/${started.body.id}/finish`, {
+    method: 'POST', headers: otherHeaders, body: '{}'
+  });
+  assert.equal(forbiddenFinish.response.status, 403);
+});
+
+test('student leaderboard freezes while host leaderboard remains live', async () => {
+  const student = await login('student', 'student-password-123');
+  const host = await login('host', 'host-password-123');
+  const studentBoard = await request(`/api/contests/${freezeContestRecord.id}/leaderboard`, {
+    headers: { Authorization: `Bearer ${student.accessToken}` }
+  });
+  const hostBoard = await request(`/api/contests/${freezeContestRecord.id}/leaderboard`, {
+    headers: { Authorization: `Bearer ${host.accessToken}` }
+  });
+
+  const studentEntry = studentBoard.body.find(item => item.userId === studentUser.id);
+  const hostEntry = hostBoard.body.find(item => item.userId === studentUser.id);
+  assert.equal(studentEntry.totalSubmissions, 1);
+  assert.equal(hostEntry.totalSubmissions, 2);
 });

@@ -109,7 +109,7 @@ export const ProblemManager: React.FC = () => {
 
   const fetchProblems = async () => {
     try {
-      const res = await apiFetch(`${serverUrl}/api/problems?role=host`);
+      const res = await apiFetch(`${serverUrl}/api/problems`);
       if (res.ok) setProblems(await res.json());
     } catch (e) {
       console.error(e);

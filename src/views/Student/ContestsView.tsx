@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { apiFetch } from '../../lib/api';
+import { apiFetch, downloadAuthenticatedFile } from '../../lib/api';
+import { createViolationDeduper, ViolationSignal } from '../../lib/violationDeduper';
 import { Contest, Problem, Submission, VirtualSession, LeaderboardEntry } from '../../types';
 import { useNetwork } from '../../context/NetworkContext';
 import { useAuth } from '../../context/AuthContext';
@@ -120,22 +121,19 @@ export const ContestsView: React.FC = () => {
       return;
     }
 
+    const deduper = createViolationDeduper();
+    const recordSignal = (signal: ViolationSignal) => {
+      if (!deduper.shouldRecord(signal)) return;
+      setTabViolations(prev => prev + 1);
+      setShowViolationModal(true);
+    };
+
     const handleVisibilityChange = () => {
-      if (document.hidden) {
-        setTabViolations(prev => {
-          const next = prev + 1;
-          setShowViolationModal(true);
-          return next;
-        });
-      }
+      if (document.hidden) recordSignal('visibilitychange');
     };
 
     const handleBlur = () => {
-      setTabViolations(prev => {
-        const next = prev + 1;
-        setShowViolationModal(true);
-        return next;
-      });
+      recordSignal('blur');
     };
 
     document.addEventListener('visibilitychange', handleVisibilityChange);
@@ -178,8 +176,7 @@ export const ContestsView: React.FC = () => {
     setLoading(true);
     setFetchError(null);
     try {
-      const classParam = user?.classId ? `&classId=${user.classId}` : '';
-      const res = await apiFetch(`${serverUrl}/api/contests?role=user${classParam}`);
+      const res = await apiFetch(`${serverUrl}/api/contests`);
       if (res.ok) {
         const list: Contest[] = await res.json();
         setContests(list);
@@ -189,7 +186,7 @@ export const ContestsView: React.FC = () => {
         if (user) {
           list.filter(c => c.status === 'ended').forEach(async (c) => {
             try {
-              const vRes = await apiFetch(`${serverUrl}/api/contests/${c.id}/virtual-sessions?userId=${user.id}`);
+              const vRes = await apiFetch(`${serverUrl}/api/contests/${c.id}/virtual-sessions`);
               if (vRes.ok) {
                 const vsList = await vRes.json();
                 setStudentVirtualHistory(prev => ({ ...prev, [c.id]: vsList }));
@@ -211,15 +208,16 @@ export const ContestsView: React.FC = () => {
   const handleEnterContest = async (c: Contest) => {
     if (enteringContestId) return;
 
-    if (c.candidateIds && c.candidateIds.length > 0 && user && !c.candidateIds.includes(user.id)) {
-      alert('Bạn không có tên trong danh sách thí sinh được phân công ca thi này. Vui lòng liên hệ giám thị phòng máy.');
-      return;
-    }
-
     setEnteringContestId(c.id);
     try {
       const cleanBase = (serverUrl || '').replace(/\/+$/, '');
-      const res = await apiFetch(`${cleanBase}/api/contests/${c.id}?role=user`);
+      const pinCode = c.requiresPin ? window.prompt('Nhập mã PIN kỳ thi') : '';
+      if (c.requiresPin && pinCode === null) return;
+      const res = await apiFetch(`${cleanBase}/api/contests/${c.id}/join`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ pinCode: pinCode || '' })
+      });
       if (!res.ok) {
         const err = await res.json().catch(() => ({}));
         alert(err.error || `Không thể tải dữ liệu phòng thi (Mã lỗi HTTP: ${res.status})`);
@@ -227,33 +225,16 @@ export const ContestsView: React.FC = () => {
       }
 
       const fullContest: Contest = await res.json();
-      if (fullContest.candidateIds && fullContest.candidateIds.length > 0 && user && !fullContest.candidateIds.includes(user.id)) {
-        alert('Bạn không có tên trong danh sách thí sinh được phân công ca thi này. Vui lòng liên hệ giám thị phòng máy.');
-        return;
-      }
-
-      if (fullContest.status === 'upcoming') {
-        alert('Chưa đến giờ bắt đầu kỳ thi này! Vui lòng chờ giám thị phòng máy mở đề.');
-        return;
-      }
-
       setActiveContest(fullContest);
       setActiveContestProblems(fullContest.problems || []);
       setActiveProblem(null);
       setActiveVirtualSession(null);
       setTabViolations(0);
 
-      // Register live attendance if user is logged in
+      // Fetch authenticated student's official submissions for this contest.
       if (user) {
-        apiFetch(`${cleanBase}/api/contests/${c.id}/attendance`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ userId: user.id, status: 'present' })
-        }).catch(() => {});
-
-        // Fetch user's official submissions for this contest
         try {
-          const subRes = await apiFetch(`${cleanBase}/api/submissions?userId=${user.id}&contestId=${c.id}&isVirtual=false`);
+          const subRes = await apiFetch(`${cleanBase}/api/submissions?contestId=${c.id}&isVirtual=false`);
           if (subRes.ok) {
             setContestSubmissions(await subRes.json());
           }
@@ -276,7 +257,7 @@ export const ContestsView: React.FC = () => {
       const res = await apiFetch(`${serverUrl}/api/contests/${c.id}/virtual-start`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ userId: user.id, userName: user.fullName || user.username })
+        body: JSON.stringify({})
       });
 
       if (!res.ok) {
@@ -286,11 +267,9 @@ export const ContestsView: React.FC = () => {
         return;
       }
 
-      const session: VirtualSession = await res.json();
-
-      // Fetch full contest details and problems
-      const contestRes = await apiFetch(`${serverUrl}/api/contests/${c.id}`);
-      const fullContest: Contest = await contestRes.json();
+      const payload: VirtualSession & { contest: Contest } = await res.json();
+      const session: VirtualSession = payload;
+      const fullContest: Contest = payload.contest;
 
       setActiveContest(fullContest);
       setActiveContestProblems(fullContest.problems || []);
@@ -434,10 +413,9 @@ export const ContestsView: React.FC = () => {
 
         {/* Problem Detail view */}
         <ProblemDetail 
-          problem={activeProblem} 
-          onBack={() => setActiveProblem(null)} 
+          problem={activeProblem}
+          onBack={() => setActiveProblem(null)}
           contestId={activeContest.id}
-          isVirtual={!!activeVirtualSession}
           virtualSessionId={activeVirtualSession?.id}
           contestProblems={activeContest.problems || []}
           onSelectProblem={(p) => setActiveProblem(p)}
@@ -452,12 +430,12 @@ export const ContestsView: React.FC = () => {
           <div className="modal-overlay" style={{ zIndex: 9999 }}>
             <div className="glass-panel" style={{ maxWidth: '440px', padding: '24px', textAlign: 'center', border: '2px solid var(--accent-rose)' }}>
               <ShieldAlert size={48} style={{ color: 'var(--accent-rose)', margin: '0 auto 12px' }} />
-              <h3 style={{ color: 'var(--accent-rose)', marginBottom: '8px' }}>CẢNH BÁO GIAN LẬN THI TRỰC TUYẾN</h3>
+              <h3 style={{ color: 'var(--accent-rose)', marginBottom: '8px' }}>TÍN HIỆU RỜI CỬA SỔ LÀM BÀI</h3>
               <p style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', marginBottom: '14px', lineHeight: 1.5 }}>
-                Hệ thống phát hiện bạn vừa <strong>rời khỏi cửa sổ làm bài hoặc chuyển sang tab khác</strong>!
+                Hệ thống ghi nhận cửa sổ làm bài vừa mất focus hoặc bị ẩn. Đây là tín hiệu giám sát để giám thị xem xét, không phải kết luận gian lận.
               </p>
               <div style={{ background: 'rgba(244,63,94,0.1)', padding: '8px', borderRadius: '4px', marginBottom: '18px', fontWeight: 700, color: '#f87171' }}>
-                Số lần vi phạm: {tabViolations} / {activeContest.antiCheat?.maxTabViolations || 3}
+                Số tín hiệu cần xem xét: {tabViolations} / {activeContest.antiCheat?.maxTabViolations || 3}
               </div>
               <button 
                 className="btn btn-primary" 
@@ -625,14 +603,14 @@ export const ContestsView: React.FC = () => {
               >
                 <Eye size={14} /> Xem Toàn Bộ Đề Thi (PDF)
               </button>
-              <a 
-                href={`${serverUrl}${activeContest.pdfUrl}`}
-                download={activeContest.pdfFileName || `${activeContest.title}.pdf`}
+              <button
+                type="button"
+                onClick={() => downloadAuthenticatedFile(`${serverUrl}${activeContest.pdfUrl}`, activeContest.pdfFileName || `${activeContest.title}.pdf`).catch(error => alert(error.message))}
                 className="btn btn-outline btn-sm"
-                style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', textDecoration: 'none' }}
+                style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}
               >
                 <Download size={14} /> Tải Về
-              </a>
+              </button>
             </div>
           </div>
         )}
@@ -729,14 +707,14 @@ export const ContestsView: React.FC = () => {
                 </div>
 
                 <div style={{ display: 'flex', gap: '8px' }}>
-                  <a 
-                    href={`${serverUrl}${activeContest.pdfUrl}`}
-                    download={activeContest.pdfFileName || `${activeContest.title}.pdf`}
+                  <button
+                    type="button"
+                    onClick={() => downloadAuthenticatedFile(`${serverUrl}${activeContest.pdfUrl}`, activeContest.pdfFileName || `${activeContest.title}.pdf`).catch(error => alert(error.message))}
                     className="btn btn-secondary btn-sm"
-                    style={{ display: 'inline-flex', alignItems: 'center', gap: '5px', textDecoration: 'none' }}
+                    style={{ display: 'inline-flex', alignItems: 'center', gap: '5px' }}
                   >
                     <Download size={13} /> Tải Về Máy
-                  </a>
+                  </button>
                   <button className="btn btn-outline btn-sm" onClick={() => setViewingContestPdf(false)}>
                     <X size={15} />
                   </button>

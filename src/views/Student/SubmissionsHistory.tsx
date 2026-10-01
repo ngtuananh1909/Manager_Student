@@ -2,14 +2,12 @@ import React, { useState, useEffect } from 'react';
 import { apiFetch } from '../../lib/api';
 import { Submission } from '../../types';
 import { useNetwork } from '../../context/NetworkContext';
-import { useAuth } from '../../context/AuthContext';
 import { VerdictBadge } from '../../components/VerdictBadge';
 import { DiffViewer } from '../../components/DiffViewer';
 import { Clock, Code, X, Check, Copy, GitCompare, ChevronDown, ChevronUp, FileText, AlertCircle } from 'lucide-react';
 
 export const SubmissionsHistory: React.FC = () => {
   const { serverUrl } = useNetwork();
-  const { user } = useAuth();
   const [submissions, setSubmissions] = useState<Submission[]>([]);
   const [loading, setLoading] = useState(true);
   const [selectedSub, setSelectedSub] = useState<Submission | null>(null);
@@ -19,11 +17,11 @@ export const SubmissionsHistory: React.FC = () => {
 
   useEffect(() => {
     fetchSubmissions();
-  }, [serverUrl, user]);
+  }, [serverUrl]);
 
   const fetchSubmissions = async () => {
     try {
-      const url = user ? `${serverUrl}/api/submissions?userId=${user.id}` : `${serverUrl}/api/submissions`;
+      const url = `${serverUrl}/api/submissions`;
       const res = await apiFetch(url);
       if (res.ok) {
         const data = await res.json();

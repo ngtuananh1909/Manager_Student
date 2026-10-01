@@ -1,5 +1,6 @@
 const db = require('./db.cjs');
 const judge = require('./judge.cjs');
+const { sanitizeSubmissionForStudent } = require('./serializers.cjs');
 
 class SubmissionQueue {
   constructor() {
@@ -88,20 +89,7 @@ class SubmissionQueue {
     this.checkGamification(sub.userId, updated, problem);
 
     // Broadcast results (Sanitize secret inputs/outputs for students)
-    const contest = sub.contestId ? db.getContest(sub.contestId) : null;
-    const hideDetails = contest ? contest.hideTestDetailsForStudents !== false : true;
-    const studentResult = (hideDetails && updated.details) ? {
-      ...updated,
-      details: updated.details.map(d => ({
-        testIndex: d.testIndex,
-        name: d.name,
-        status: d.status,
-        time: d.time,
-        memory: d.memory,
-        scoreEarned: d.scoreEarned,
-        message: d.message
-      }))
-    } : updated;
+    const studentResult = sanitizeSubmissionForStudent(updated);
 
     if (this.io) {
       this.io.to(`user:${sub.userId}`).emit(`submission:${submissionId}:result`, studentResult);

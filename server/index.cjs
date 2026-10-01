@@ -7,6 +7,14 @@ const cors = require('cors');
 const { Server } = require('socket.io');
 const db = require('./db.cjs');
 const { AuthError, createAuthService, hashPassword, safeUser } = require('./auth.cjs');
+const { ContestPolicyError, assertJoinAllowed, assertSubmissionAllowed } = require('./contestPolicy.cjs');
+const {
+  sanitizeContestForHost,
+  sanitizeContestForStudent,
+  sanitizeProblemForHost,
+  sanitizeProblemForStudent,
+  sanitizeSubmissionForStudent
+} = require('./serializers.cjs');
 const judge = require('./judge.cjs');
 const queue = require('./queue.cjs');
 const lan = require('./lanDiscovery.cjs');
@@ -167,6 +175,14 @@ function handleAuthFailure(res, error) {
   return res.status(500).json({ code: 'AUTH_INTERNAL_ERROR', error: 'Không thể xử lý yêu cầu xác thực.' });
 }
 
+function handlePolicyFailure(res, error) {
+  if (error instanceof ContestPolicyError) {
+    return res.status(error.status).json({ code: error.code, error: error.message });
+  }
+  console.error('[Contest Policy Error]', error);
+  return res.status(500).json({ code: 'CONTEST_POLICY_ERROR', error: 'Không thể kiểm tra điều kiện kỳ thi.' });
+}
+
 function getBearerToken(req) {
   const match = String(req.headers.authorization || '').match(/^Bearer\s+([^\s]+)$/i);
   return match ? match[1] : '';
@@ -277,52 +293,14 @@ app.put('/api/settings', requireHost, (req, res) => {
   res.json(updated);
 });
 
-// HELPER: Sanitize problem for students (NEVER return official testCases!)
-function sanitizeProblemForStudent(p) {
-  if (!p) return null;
-  const samples = (p.samples && p.samples.length > 0)
-    ? p.samples
-    : (p.testCases || []).filter(tc => tc.isSample).map((tc, idx) => ({
-        id: `sample-${idx + 1}`,
-        name: `Ví dụ ${idx + 1}`,
-        input: tc.input || '',
-        output: tc.expectedOutput || ''
-      }));
-
-  return {
-    id: p.id,
-    code: p.code,
-    title: p.title,
-    difficulty: p.difficulty,
-    points: p.points || 100,
-    timeLimit: p.timeLimit || 1000,
-    memoryLimit: p.memoryLimit || 256,
-    category: p.category,
-    description: p.description,
-    statement: p.statement || '',
-    statementHtml: p.statementHtml || '',
-    sampleCode: p.sampleCode,
-    pdfUrl: p.pdfUrl,
-    pdfFileName: p.pdfFileName,
-    testCount: (p.testCases || []).length,
-    samples: samples,
-    testCases: [] // Strictly empty for students! Official test cases are secret on server
-  };
-}
-
-function sanitizeProblemForHost(problem) {
-  if (!problem) return null;
-  const { _pdfDiskPath, testCases, ...safe } = problem;
-  return {
-    ...safe,
-    testCount: problem.testCount ?? (Array.isArray(testCases) ? testCases.length : 0),
-    testCases: []
-  };
-}
-
 function emitProblemUpdate(problem) {
   io.to('role:host').emit('problems:update', sanitizeProblemForHost(problem));
   io.to('role:user').emit('problems:update', sanitizeProblemForStudent(problem));
+}
+
+function emitContestEvent(eventName, contest) {
+  io.to('role:host').emit(eventName, sanitizeContestForHost(contest));
+  io.to('role:user').emit(eventName, sanitizeContestForStudent(contest));
 }
 
 // PROBLEMS
@@ -649,7 +627,7 @@ app.post('/api/contests/:id/pdf', requireHost, async (req, res) => {
       _pdfDiskPath: filePath
     });
 
-    io.emit('contest:updated', updated);
+    emitContestEvent('contest:updated', updated);
     res.json({ success: true, contest: updated });
   } catch (err) {
     res.status(500).json({ error: 'Lỗi lưu file đề thi: ' + err.message });
@@ -739,7 +717,7 @@ app.delete('/api/contests/:id/pdf', requireHost, (req, res) => {
     _pdfDiskPath: ''
   });
 
-  io.emit('contest:updated', updated);
+  emitContestEvent('contest:updated', updated);
   res.json({ success: true, contest: updated });
 });
 
@@ -994,54 +972,30 @@ app.put('/api/problems/:id/testcases', requireHost, (req, res) => {
   res.json({ success: true, count: testCases.length, testCases: updated.testCases });
 });
 
-function sanitizeSubmissionForStudent(submission) {
-  if (!submission) return null;
-  return {
-    id: submission.id,
-    userId: submission.userId,
-    userName: submission.userName,
-    problemId: submission.problemId,
-    problemCode: submission.problemCode,
-    code: submission.code,
-    status: submission.status,
-    score: submission.score,
-    passedTests: submission.passedTests,
-    totalTests: submission.totalTests,
-    executionTime: submission.executionTime,
-    memoryUsed: submission.memoryUsed,
-    submittedAt: submission.submittedAt,
-    compileError: submission.compileError,
-    contestId: submission.contestId,
-    isVirtual: !!submission.isVirtual,
-    participationType: submission.participationType,
-    virtualSessionId: submission.virtualSessionId,
-    details: (submission.details || []).map(detail => ({
-      testIndex: detail.testIndex,
-      name: detail.name,
-      status: detail.status,
-      time: detail.time,
-      memory: detail.memory,
-      scoreEarned: detail.scoreEarned,
-      message: detail.message
-    }))
-  };
-}
-
 // SUBMISSIONS
 app.get('/api/submissions', (req, res) => {
-  const { userId, problemId } = req.query;
-  const submissions = db.getSubmissions({ userId, problemId });
-  res.json(submissions);
+  const filter = {
+    userId: req.user.role === 'host' ? req.query.userId : req.user.id,
+    problemId: req.query.problemId,
+    contestId: req.query.contestId,
+    virtualSessionId: req.query.virtualSessionId,
+    isVirtual: req.query.isVirtual
+  };
+  const submissions = db.getSubmissions(filter);
+  res.json(req.user.role === 'host' ? submissions : submissions.map(sanitizeSubmissionForStudent));
 });
 
 app.get('/api/submissions/:id', (req, res) => {
   const sub = db.getSubmission(req.params.id);
   if (!sub) return res.status(404).json({ error: 'Submission not found' });
-  res.json(sub);
+  if (req.user.role !== 'host' && sub.userId !== req.user.id) {
+    return res.status(403).json({ code: 'SUBMISSION_FORBIDDEN', error: 'Bạn không có quyền xem bài nộp này.' });
+  }
+  res.json(req.user.role === 'host' ? sub : sanitizeSubmissionForStudent(sub));
 });
 
 // GET FULL RAW TESTCASE DETAILS FOR SUBMISSION (On-demand inspection for teachers)
-app.get('/api/submissions/:id/full-test/:testIndex', (req, res) => {
+app.get('/api/submissions/:id/full-test/:testIndex', requireHost, (req, res) => {
   const sub = db.getSubmission(req.params.id);
   if (!sub) return res.status(404).json({ error: 'Không tìm thấy bài nộp' });
 
@@ -1114,9 +1068,12 @@ function isIpAllowed(clientIp, whitelistStr) {
 }
 
 app.post('/api/submissions', submissionRateLimiter, (req, res) => {
-  const { userId, userName, problemId, code, contestId, isVirtual, virtualSessionId } = req.body;
+  const { problemId, code, contestId, virtualSessionId } = req.body;
   if (!code || !code.trim()) {
     return res.status(400).json({ error: 'Mã nguồn không được để trống' });
+  }
+  if (req.user.role !== 'user') {
+    return res.status(403).json({ code: 'STUDENT_REQUIRED', error: 'Chỉ tài khoản học sinh được nộp bài.' });
   }
 
   const settings = db.getSettings();
@@ -1124,43 +1081,34 @@ app.post('/api/submissions', submissionRateLimiter, (req, res) => {
     return res.status(403).json({ error: 'Cổng nộp bài hiện đã đóng. Giáo viên không nhận thêm bài nộp.' });
   }
 
-  // If in contest, verify contest status & time (or virtual session)
   let contest = null;
   let virtualSession = null;
-  if (isVirtual && virtualSessionId) {
+  const isVirtualSubmission = !!virtualSessionId;
+  if (isVirtualSubmission) {
     virtualSession = db.getVirtualSession(virtualSessionId);
     if (!virtualSession) {
-      return res.status(400).json({ error: 'Phiên thi ảo không tồn tại' });
+      return res.status(404).json({ code: 'VIRTUAL_SESSION_NOT_FOUND', error: 'Phiên thi ảo không tồn tại.' });
+    }
+    if (virtualSession.userId !== req.user.id) {
+      return res.status(403).json({ code: 'VIRTUAL_SESSION_FORBIDDEN', error: 'Phiên thi ảo không thuộc tài khoản này.' });
     }
     const now = Date.now();
     const end = new Date(virtualSession.endTime).getTime();
-    if (virtualSession.status === 'completed' || now > end + 60000) {
-      return res.status(403).json({ error: 'Phiên thi ảo đã hết giờ làm bài.' });
+    if (virtualSession.status === 'completed' || now > end) {
+      return res.status(403).json({ code: 'VIRTUAL_SESSION_ENDED', error: 'Phiên thi ảo đã hết giờ làm bài.' });
     }
-    contest = db.getContest(contestId || virtualSession.contestId);
+    if (contestId && contestId !== virtualSession.contestId) {
+      return res.status(403).json({ code: 'VIRTUAL_CONTEST_MISMATCH', error: 'Phiên thi ảo không thuộc kỳ thi đã gửi.' });
+    }
+    contest = db.getContest(virtualSession.contestId);
+    if (!contest) return res.status(404).json({ code: 'CONTEST_NOT_FOUND', error: 'Kỳ thi không tồn tại.' });
   } else if (contestId) {
     contest = db.getContest(contestId);
-    if (contest) {
-      // Verify IP Whitelist if set by teacher
-      if (contest.ipWhitelist && contest.ipWhitelist.trim()) {
-        const clientIp = (req.headers['x-forwarded-for'] || req.ip || req.connection.remoteAddress || '').replace(/^.*:/, '');
-        if (!isIpAllowed(clientIp, contest.ipWhitelist)) {
-          return res.status(403).json({
-            error: `Địa chỉ IP của máy bạn (${clientIp}) không nằm trong dải IP phòng thi được phép nộp bài (${contest.ipWhitelist}). Vui lòng liên hệ giám thị.`
-          });
-        }
-      }
-
-      const now = Date.now();
-      const end = new Date(contest.endTime).getTime();
-      if (contest.status === 'ended' || now > end) {
-        return res.status(403).json({ error: 'Kỳ thi đã kết thúc. Không thể nộp bài thêm.' });
-      }
-    }
+    if (!contest) return res.status(404).json({ code: 'CONTEST_NOT_FOUND', error: 'Kỳ thi không tồn tại.' });
   }
 
-  let rawCode = String(req.body.problemCode || problemId || req.body.filename || '').trim();
-  let cleanCode = rawCode.replace(/\.(cpp|pas|py|c|java|txt)$/i, '').trim().toLowerCase();
+  const rawCode = String(req.body.problemCode || problemId || req.body.filename || '').trim();
+  const cleanCode = rawCode.replace(/\.(cpp|pas|py|c|java|txt)$/i, '').trim().toLowerCase();
 
   let prob = db.getProblem(problemId);
   if (!prob && cleanCode) {
@@ -1174,7 +1122,7 @@ app.post('/api/submissions', submissionRateLimiter, (req, res) => {
       p.code.toLowerCase() === rawCode.toLowerCase()
     );
   }
-  if (!prob && cleanCode) {
+  if (!prob && cleanCode && !contest) {
     // Search all problems in db by code case-insensitively
     prob = db.getProblems().find(p => p.code?.toLowerCase() === cleanCode);
   }
@@ -1182,22 +1130,48 @@ app.post('/api/submissions', submissionRateLimiter, (req, res) => {
     return res.status(404).json({ error: 'Không tìm thấy bài tập tương ứng để chấm (Tên bài không khớp với đề thi)' });
   }
 
+  if (contest && !isVirtualSubmission) {
+    try {
+      assertSubmissionAllowed({
+        contest,
+        user: req.user,
+        attendance: db.getContestAttendanceRecord(contest.id, req.user.id),
+        now: Date.now(),
+        joined: auth.hasJoinedContest(getBearerToken(req), contest.id),
+        problemId: prob.id
+      });
+    } catch (error) {
+      return handlePolicyFailure(res, error);
+    }
+
+    if (contest.ipWhitelist && contest.ipWhitelist.trim()) {
+      const clientIp = String(req.socket.remoteAddress || '').replace(/^::ffff:/, '');
+      if (!isIpAllowed(clientIp, contest.ipWhitelist)) {
+        return res.status(403).json({ code: 'IP_NOT_ALLOWED', error: `Địa chỉ IP (${clientIp}) không nằm trong dải phòng thi được phép.` });
+      }
+    }
+  }
+
+  if (contest && isVirtualSubmission && !(contest.problemIds || []).includes(prob.id)) {
+    return res.status(403).json({ code: 'PROBLEM_NOT_IN_CONTEST', error: 'Bài tập không thuộc kỳ thi này.' });
+  }
+
   const sub = db.createSubmission({
-    userId,
-    userName,
+    userId: req.user.id,
+    userName: req.user.fullName || req.user.username,
     problemId: prob.id,
     problemCode: prob.code,
     code,
     totalTests: (prob.testCases || []).length,
-    contestId: contestId || (virtualSession ? virtualSession.contestId : null),
-    isVirtual: !!isVirtual,
+    contestId: contest ? contest.id : null,
+    isVirtual: isVirtualSubmission,
     virtualSessionId: virtualSessionId || null,
     requireFreopen: !!contest?.requireFreopen
   });
 
   // Check submission mode: direct vs batch (chế độ nộp bài)
   // In virtual mode, always grade directly so student gets immediate feedback!
-  const isBatchMode = !isVirtual && ((contest && contest.gradingMode === 'batch_after_deadline') || (settings && settings.submissionMode === 'batch'));
+  const isBatchMode = !isVirtualSubmission && ((contest && contest.gradingMode === 'batch_after_deadline') || (settings && settings.submissionMode === 'batch'));
   if (!isBatchMode) {
     queue.enqueue(sub.id);
   }
@@ -1205,7 +1179,7 @@ app.post('/api/submissions', submissionRateLimiter, (req, res) => {
   io.to('role:host').emit('submission:created', sub);
   io.to(`user:${sub.userId}`).emit('submission:created', sanitizeSubmissionForStudent(sub));
   res.json({
-    ...sub,
+    ...sanitizeSubmissionForStudent(sub),
     mode: isBatchMode ? 'batch' : 'direct',
     note: isBatchMode ? 'Bài nộp đã được ghi nhận trong kỳ thi. Kết quả sẽ được công bố sau khi kết thúc giờ làm bài.' : undefined
   });
@@ -1354,54 +1328,73 @@ app.delete('/api/grade-all/cancel', requireHost, (req, res) => {
 });
 
 // ─── CONTESTS APIS ────────────────────────────────────────────────────────
+function withDynamicContestStatus(contest, now = Date.now()) {
+  const start = new Date(contest.startTime).getTime();
+  const end = new Date(contest.endTime).getTime();
+  let status = contest.status;
+  if (status !== 'ended') {
+    if (now < start) status = 'upcoming';
+    else if (now <= end) status = 'running';
+    else status = 'ended';
+  }
+  return { ...contest, status };
+}
+
 app.get('/api/contests', (req, res) => {
-  const { role, classId } = req.query;
-  let contests = db.getContests();
-  const now = Date.now();
+  let contests = db.getContests().map(contest => withDynamicContestStatus(contest));
 
-  // Dynamic status check
-  contests = contests.map(c => {
-    let status = c.status;
-    const start = new Date(c.startTime).getTime();
-    const end = new Date(c.endTime).getTime();
-    if (status !== 'ended') {
-      if (now < start) status = 'upcoming';
-      else if (now >= start && now <= end) status = 'running';
-      else if (now > end) status = 'ended';
-    }
-    return { ...c, status };
-  });
-
-  if (role !== 'host' && classId) {
-    contests = contests.filter(c => !c.classIds || c.classIds.length === 0 || c.classIds.includes(classId));
+  if (req.user.role === 'host') {
+    return res.json(contests.map(contest => sanitizeContestForHost(contest)));
   }
 
-  res.json(contests);
+  contests = contests.filter(contest => {
+    if (Array.isArray(contest.candidateIds) && contest.candidateIds.length > 0) {
+      return contest.candidateIds.includes(req.user.id);
+    }
+    return !Array.isArray(contest.classIds) || contest.classIds.length === 0 || contest.classIds.includes(req.user.classId);
+  });
+  res.json(contests.map(contest => sanitizeContestForStudent(contest)));
 });
 
 app.get('/api/contests/:id', (req, res) => {
   const contest = db.getContest(req.params.id);
   if (!contest) return res.status(404).json({ error: 'Kỳ thi không tồn tại' });
   
-  const isHost = req.query.role === 'host';
+  const dynamicContest = withDynamicContestStatus(contest);
   const rawProblems = (contest.problemIds || []).map(pId => db.getProblem(pId)).filter(Boolean);
-  const problems = rawProblems.map(p => {
-    if (isHost) return p;
-    // For students: strictly sanitize hidden testcases! Only return samples and metadata
-    return sanitizeProblemForStudent(p);
-  });
-  
-  const now = Date.now();
-  const start = new Date(contest.startTime).getTime();
-  const end = new Date(contest.endTime).getTime();
-  let status = contest.status;
-  if (status !== 'ended') {
-    if (now < start) status = 'upcoming';
-    else if (now >= start && now <= end) status = 'running';
-    else if (now > end) status = 'ended';
+  if (req.user.role === 'host') {
+    return res.json(sanitizeContestForHost(dynamicContest, rawProblems));
   }
+  res.json(sanitizeContestForStudent(dynamicContest));
+});
 
-  res.json({ ...contest, status, problems });
+app.post('/api/contests/:id/join', (req, res) => {
+  const contest = db.getContest(req.params.id);
+  const attendance = db.getContestAttendanceRecord(req.params.id, req.user.id);
+  try {
+    const policy = assertJoinAllowed({
+      contest,
+      user: req.user,
+      suppliedPin: req.body?.pinCode,
+      attendance,
+      now: Date.now()
+    });
+    if (!auth.markContestJoined(getBearerToken(req), contest.id)) {
+      return res.status(401).json({ code: 'AUTH_REQUIRED', error: 'Phiên đăng nhập không hợp lệ hoặc đã hết hạn.' });
+    }
+    db.updateContestAttendance(contest.id, req.user.id, {
+      status: 'present',
+      ip: String(req.socket.remoteAddress || '').replace(/^::ffff:/, ''),
+      lastActive: new Date().toISOString()
+    });
+    const problems = (contest.problemIds || []).map(problemId => db.getProblem(problemId)).filter(Boolean);
+    res.json({
+      ...sanitizeContestForStudent(withDynamicContestStatus(contest), problems),
+      effectiveEndTime: new Date(policy.effectiveEndTime).toISOString()
+    });
+  } catch (error) {
+    handlePolicyFailure(res, error);
+  }
 });
 
 function processContestImportedProblems(importedProblems, existingProblemIds = []) {
@@ -1501,7 +1494,7 @@ app.post('/api/contests', requireHost, (req, res) => {
       }
     }
     const contest = db.createContest(contestData);
-    io.emit('contest:created', contest);
+    emitContestEvent('contest:created', contest);
     res.json(contest);
   } catch (err) {
     console.error('[Create Contest Error]', err);
@@ -1532,7 +1525,7 @@ app.put('/api/contests/:id', requireHost, (req, res) => {
     }
     const updated = db.updateContest(req.params.id, updateData);
     if (!updated) return res.status(404).json({ error: 'Kỳ thi không tồn tại' });
-    io.emit('contest:updated', updated);
+    emitContestEvent('contest:updated', updated);
     res.json(updated);
   } catch (err) {
     console.error('[Update Contest Error]', err);
@@ -1543,7 +1536,7 @@ app.put('/api/contests/:id', requireHost, (req, res) => {
 app.delete('/api/contests/:id', requireHost, (req, res) => {
   const ok = db.deleteContest(req.params.id);
   if (!ok) return res.status(404).json({ error: 'Kỳ thi không tồn tại' });
-  io.emit('contest:deleted', { id: req.params.id });
+  io.to('role:user').to('role:host').emit('contest:deleted', { id: req.params.id });
   res.json({ success: true });
 });
 
@@ -1552,13 +1545,22 @@ app.post('/api/contests/:id/toggle-status', requireHost, (req, res) => {
   if (!contest) return res.status(404).json({ error: 'Kỳ thi không tồn tại' });
   const { status } = req.body; // 'running' | 'ended' | 'upcoming'
   const updated = db.updateContest(req.params.id, { status });
-  io.emit('contest:updated', updated);
+  emitContestEvent('contest:updated', updated);
   res.json(updated);
 });
 
 app.get('/api/contests/:id/leaderboard', (req, res) => {
   const isVirtual = req.query.virtual === 'true';
-  const leaderboard = db.getContestLeaderboard(req.params.id, isVirtual);
+  const contest = db.getContest(req.params.id);
+  if (!contest) return res.status(404).json({ error: 'Kỳ thi không tồn tại' });
+  let submittedBefore;
+  const dynamicContest = withDynamicContestStatus(contest);
+  const freezeMinutes = Math.max(0, Number(contest.freezeScoreboardMinutes) || 0);
+  if (req.user.role !== 'host' && !isVirtual && dynamicContest.status === 'running' && freezeMinutes > 0) {
+    const freezeAt = new Date(contest.endTime).getTime() - freezeMinutes * 60 * 1000;
+    if (Date.now() >= freezeAt) submittedBefore = freezeAt;
+  }
+  const leaderboard = db.getContestLeaderboard(req.params.id, isVirtual, { submittedBefore });
   res.json(leaderboard);
 });
 
@@ -1566,27 +1568,36 @@ app.get('/api/contests/:id/leaderboard', (req, res) => {
 app.post('/api/contests/:id/virtual-start', (req, res) => {
   const contest = db.getContest(req.params.id);
   if (!contest) return res.status(404).json({ error: 'Kỳ thi không tồn tại' });
-  const { userId, userName } = req.body;
-  if (!userId) return res.status(400).json({ error: 'Thiếu thông tin người dùng' });
+  if (req.user.role !== 'user') {
+    return res.status(403).json({ code: 'STUDENT_REQUIRED', error: 'Chỉ tài khoản học sinh được thi ảo.' });
+  }
+  if (withDynamicContestStatus(contest).status !== 'ended') {
+    return res.status(403).json({ code: 'VIRTUAL_NOT_AVAILABLE', error: 'Thi ảo chỉ mở sau khi kỳ thi chính thức kết thúc.' });
+  }
 
   const session = db.createVirtualSession({
-    userId,
-    userName: userName || 'Học sinh',
+    userId: req.user.id,
+    userName: req.user.fullName || req.user.username,
     contestId: contest.id,
     durationMinutes: contest.durationMinutes
   });
-  res.json(session);
+  const problems = (contest.problemIds || []).map(problemId => db.getProblem(problemId)).filter(Boolean);
+  res.json({ ...session, contest: sanitizeContestForStudent(withDynamicContestStatus(contest), problems) });
 });
 
 app.get('/api/contests/:id/virtual-sessions', (req, res) => {
-  const { userId } = req.query;
+  const userId = req.user.role === 'host' ? req.query.userId : req.user.id;
   const sessions = db.getVirtualSessions({ contestId: req.params.id, userId });
   res.json(sessions);
 });
 
 app.post('/api/virtual-sessions/:id/finish', (req, res) => {
+  const session = db.getVirtualSession(req.params.id);
+  if (!session) return res.status(404).json({ error: 'Phiên thi ảo không tồn tại' });
+  if (req.user.role !== 'host' && session.userId !== req.user.id) {
+    return res.status(403).json({ code: 'VIRTUAL_SESSION_FORBIDDEN', error: 'Phiên thi ảo không thuộc tài khoản này.' });
+  }
   const finished = db.finishVirtualSession(req.params.id);
-  if (!finished) return res.status(404).json({ error: 'Phiên thi ảo không tồn tại' });
   res.json(finished);
 });
 
@@ -1615,7 +1626,7 @@ app.post('/api/contests/:id/attendance', requireHost, (req, res) => {
   const { userId, status, reason, extraMinutes } = req.body;
   if (!userId) return res.status(400).json({ error: 'Thiếu userId' });
   const updated = db.updateContestAttendance(req.params.id, userId, { status, reason, extraMinutes });
-  io.emit('contest:attendance_changed', { contestId: req.params.id, userId, ...updated });
+  io.to('role:host').emit('contest:attendance_changed', { contestId: req.params.id, userId, ...updated });
   res.json(updated);
 });
 
@@ -1624,7 +1635,7 @@ app.post('/api/contests/:id/candidates', requireHost, (req, res) => {
   if (!Array.isArray(candidateIds)) return res.status(400).json({ error: 'Danh sách candidateIds không hợp lệ' });
   const contest = db.updateContestCandidates(req.params.id, candidateIds);
   if (!contest) return res.status(404).json({ error: 'Không tìm thấy kỳ thi' });
-  io.emit('contest:candidates_updated', { contestId: req.params.id, candidateIds });
+  io.to('role:host').emit('contest:candidates_updated', { contestId: req.params.id, candidateIds });
   res.json({ success: true, count: candidateIds.length, contest });
 });
 
@@ -1644,7 +1655,7 @@ app.post('/api/contests/:id/extra-time', requireHost, (req, res) => {
     }
   }
   
-  io.emit('contest:attendance_changed', { contestId: req.params.id, userId, ...updated });
+  io.to('role:host').emit('contest:attendance_changed', { contestId: req.params.id, userId, ...updated });
   res.json({ success: true, extraMinutes, totalExtraMinutes: updated.extraMinutes });
 });
 
@@ -1660,7 +1671,7 @@ app.post('/api/contests/:id/reopen', requireHost, (req, res) => {
     }
   }
 
-  io.emit('contest:attendance_changed', { contestId: req.params.id, userId, ...updated });
+  io.to('role:host').emit('contest:attendance_changed', { contestId: req.params.id, userId, ...updated });
   res.json({ success: true, message: 'Đã mở lại lượt thi thành công' });
 });
 
@@ -1676,7 +1687,7 @@ app.post('/api/contests/:id/suspend', requireHost, (req, res) => {
     }
   }
 
-  io.emit('contest:attendance_changed', { contestId: req.params.id, userId, ...updated });
+  io.to('role:host').emit('contest:attendance_changed', { contestId: req.params.id, userId, ...updated });
   res.json({ success: true, message: 'Đã đình chỉ bài thi của học sinh' });
 });
 

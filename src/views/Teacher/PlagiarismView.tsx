@@ -27,7 +27,7 @@ export const PlagiarismView: React.FC = () => {
 
   const fetchProblems = async () => {
     try {
-      const res = await apiFetch(`${serverUrl}/api/problems?role=host`);
+      const res = await apiFetch(`${serverUrl}/api/problems`);
       if (res.ok) {
         const data: Problem[] = await res.json();
         setProblems(data);

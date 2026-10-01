@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { apiFetch } from '../../lib/api';
+import { apiFetch, downloadAuthenticatedFile } from '../../lib/api';
 import { Contest, Problem, ClassGroup, LeaderboardEntry, TestCase } from '../../types';
 import { useNetwork } from '../../context/NetworkContext';
 import { StatementViewer } from '../../components/StatementViewer';
@@ -223,8 +223,8 @@ export const ContestManager: React.FC = () => {
   const fetchInitialData = async () => {
     try {
       const [resContests, resProblems, resClasses] = await Promise.all([
-        apiFetch(`${serverUrl}/api/contests?role=host`),
-        apiFetch(`${serverUrl}/api/problems?role=host`),
+        apiFetch(`${serverUrl}/api/contests`),
+        apiFetch(`${serverUrl}/api/problems`),
         apiFetch(`${serverUrl}/api/classes`)
       ]);
 
@@ -1135,7 +1135,7 @@ export const ContestManager: React.FC = () => {
       if (res.ok) {
         setSampleImportMsg(data.message || 'Import thành công!');
         // Refresh problems and auto-select imported problem into contest!
-        const resProbs = await apiFetch(`${serverUrl}/api/problems?role=host`);
+        const resProbs = await apiFetch(`${serverUrl}/api/problems`);
         if (resProbs.ok) {
           const allProbs: Problem[] = await resProbs.json();
           setProblems(allProbs);
@@ -3237,14 +3237,14 @@ export const ContestManager: React.FC = () => {
               </div>
 
               <div style={{ display: 'flex', gap: '8px' }}>
-                <a 
-                  href={pdfViewerModal.url}
-                  download={pdfViewerModal.fileName || 'de_thi'}
+                <button
+                  type="button"
+                  onClick={() => downloadAuthenticatedFile(pdfViewerModal.url.startsWith('http') ? pdfViewerModal.url : `${serverUrl}${pdfViewerModal.url}`, pdfViewerModal.fileName || 'de_thi').catch(error => alert(error.message))}
                   className="btn btn-secondary btn-sm"
-                  style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', textDecoration: 'none' }}
+                  style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}
                 >
                   <Download size={13} /> Tải Về Máy
-                </a>
+                </button>
                 <button className="btn btn-outline btn-sm" onClick={() => setPdfViewerModal(null)}>
                   <X size={15} />
                 </button>
@@ -3256,6 +3256,7 @@ export const ContestManager: React.FC = () => {
                 src={pdfViewerModal.url}
                 fileName={pdfViewerModal.fileName}
                 title={pdfViewerModal.title}
+                serverUrl={serverUrl}
               />
             </div>
           </div>
@@ -3355,14 +3356,15 @@ export const ContestManager: React.FC = () => {
               </div>
 
               <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                <a
-                  href={`${serverUrl}/api/contests/${officialReportModal.contestId}/export-official-csv`}
+                <button
+                  type="button"
+                  onClick={() => downloadAuthenticatedFile(`${serverUrl}/api/contests/${officialReportModal.contestId}/export-official-csv`, `Bang_Diem_${officialReportModal.contestTitle}.csv`).catch(error => alert(error.message))}
                   className="btn btn-secondary btn-sm"
-                  style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', fontSize: '0.78rem', textDecoration: 'none' }}
+                  style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', fontSize: '0.78rem' }}
                   title="Xuất bảng điểm ra file Excel / CSV"
                 >
                   <FileSpreadsheet size={14} color="var(--accent-emerald)" /> Xuất Excel
-                </a>
+                </button>
 
                 <button
                   type="button"

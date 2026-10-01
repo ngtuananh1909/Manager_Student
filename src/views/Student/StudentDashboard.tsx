@@ -43,7 +43,7 @@ export const StudentDashboard: React.FC<Props> = ({ onSelectProblem }) => {
 
   const fetchProblems = async () => {
     try {
-      const res = await apiFetch(`${serverUrl}/api/problems?role=user`);
+      const res = await apiFetch(`${serverUrl}/api/problems`);
       if (res.ok) {
         const data = await res.json();
         setProblems(data);

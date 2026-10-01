@@ -36,7 +36,6 @@ interface Props {
   problem: Problem;
   onBack: () => void;
   contestId?: string;
-  isVirtual?: boolean;
   virtualSessionId?: string;
   contestProblems?: Problem[];
   onSelectProblem?: (p: Problem) => void;
@@ -50,7 +49,6 @@ export const ProblemDetail: React.FC<Props> = ({
   problem, 
   onBack, 
   contestId, 
-  isVirtual, 
   virtualSessionId,
   contestProblems = [],
   onSelectProblem,
@@ -306,12 +304,9 @@ export const ProblemDetail: React.FC<Props> = ({
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          userId: user.id,
-          userName: user.fullName || user.username,
           problemId: problem.id,
           code,
           contestId: contestId || undefined,
-          isVirtual: !!isVirtual,
           virtualSessionId: virtualSessionId || undefined
         })
       });
