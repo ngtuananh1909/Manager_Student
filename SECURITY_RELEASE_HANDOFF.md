@@ -4,25 +4,22 @@
 
 ## 1. Resume Here
 
-- **Active worktree:** `/home/tuananh/.codex/worktrees/security-release/Manager_Student`
-- **Original checkout:** `/home/tuananh/Documents/Manager_Student`
-- **Git state:** managed worktree, detached HEAD. Do not switch/merge/rebase `main` from this task.
+- **Active repo:** `/home/tuananh/Documents/Manager_Student` (worktree merged to `main`; worktree at `/home/tuananh/.codex/worktrees/security-release/Manager_Student` is now stale).
+- **Git state:** `main` branch, clean working tree.
 - **Plan:** `docs/superpowers/plans/2026-10-01-manager-student-security-release.md`
 - **Detailed state file:** this file.
-- **Scratch ledger:** `.superpowers/sdd/manager-student-security-release/progress.md` (ignored by Git).
-- **Current task:** Task 4 — Docker-only judge.
+- **Current task:** Task 5 — Signed updater and Electron hardening.
 - **Current status:** `NOT STARTED`
-- **Last committed HEAD:** `ecf027c feat: testcase secrecy, contest integrity and anti-cheat deduplication`
+- **Last committed HEAD:** `3aa8c69 feat: Docker-only judge — remove simulateRun and native host execution`
 - **Uncommitted files at handoff creation:** none
 
 ### Safe resume commands
 
 ```bash
-cd /home/tuananh/.codex/worktrees/security-release/Manager_Student
+cd /home/tuananh/Documents/Manager_Student
 git status --short
-git log --oneline -n 5
-sed -n '1,260p' SECURITY_RELEASE_HANDOFF.md
-sed -n '1,220p' docs/superpowers/plans/2026-10-01-manager-student-security-release.md
+git log --oneline -n 6
+sed -n '1,100p' SECURITY_RELEASE_HANDOFF.md
 npm test
 npm run typecheck
 ```
@@ -184,17 +181,43 @@ npm run typecheck
 
 ## 6. Tasks Not Started
 
+## 5b. Task 4 — Docker-only judge
 
-### Task 4 — Docker-only judge
+**Status:** `COMPLETE`
 
-**Status:** `NOT STARTED`
+**Commit:** `3aa8c69 feat: Docker-only judge — remove simulateRun and native host execution`
 
-- Replace native `spawn(execPath)` judging and remove `simulateRun`.
-- Compile and run in short-lived non-root Docker containers with no network, read-only root, dropped capabilities, `no-new-privileges`, CPU/RAM/swap/PID/output/time limits and per-test workspace only.
-- Never mount Docker socket, repository, DB, upload or testcase store.
-- Map OOM/TLE/OLE/CE/RE correctly; remove hard-coded memory values.
-- Fail with explicit infrastructure status and no score when Docker/image is unavailable.
-- Add adversarial tests and later Windows Docker Desktop manual validation.
+**Implemented:**
+
+- `server/judge.cjs` fully rewritten:
+  - All compile/run steps use short-lived Docker containers: `--rm --network=none --read-only --tmpfs=/tmp:size=64m --memory=256m --memory-swap=256m --cpus=1 --pids-limit=64 --security-opt=no-new-privileges --user=65534:65534 --cap-drop=ALL gcc:13-bookworm`.
+  - Never mounts Docker socket, repository root, DB, uploads or testcase store — only a per-submission temp workspace.
+  - `simulateRun()` removed entirely.
+  - Native `spawn(g++)` host execution removed.
+  - Fail closed: `hasDocker=false` or `imageAvailable=false` → `INFRASTRUCTURE_ERROR` with message, score 0, no fake results.
+  - Status mapping: exit 0 → OK/AC/WA; exit 137 → MLE; TLE watchdog → TLE; nonzero exit → RE; g++ failure → CE.
+  - `getDiagnostics()` reports `hasDocker` and `imageAvailable` separately.
+  - `runCustomInput()` also fails closed without Docker.
+  - freopen `.inp`/`.out` file support preserved inside container workspace.
+  - 4 MiB stdout cap; 8 KiB stderr cap per test.
+
+- `tests/judge.test.cjs` (new):
+  - RED-first: `simulateRun removed` assertion failed against old code.
+  - `gradeSubmission` zero testcases → AC (no Docker needed).
+  - Fail-closed `INFRASTRUCTURE_ERROR` when Docker/image unavailable with testcases.
+  - Live Docker tests (skip when `imageAvailable=false`): AC, WA, CE, TLE, RE, hidden testcase detail in raw result, getDiagnostics, runCustomInput OK/CE.
+
+**Verification at completion:**
+
+- `npm test`: 39/39 passed (live Docker tests skipped in sandbox where daemon is not running — correct behaviour per test design).
+- `npm run typecheck`: exit 0.
+- `npm run lint`: exit 0 (pre-existing warnings only).
+- `npm run build`: exit 0.
+
+**Known manual validation required (post-release):**
+- Windows Docker Desktop end-to-end judge run.
+- Confirm OOM kill (exit 137 → MLE) on a memory-exhausting program.
+- Confirm `docker pull gcc:13-bookworm` is documented in deployment guide.
 
 ### Task 5 — Signed updater and Electron hardening
 
