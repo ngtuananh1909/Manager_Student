@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { apiFetch } from '../../lib/api';
 import { Contest, Problem, Submission, VirtualSession, LeaderboardEntry } from '../../types';
 import { useNetwork } from '../../context/NetworkContext';
 import { useAuth } from '../../context/AuthContext';
@@ -164,7 +165,7 @@ export const ContestsView: React.FC = () => {
 
       if (diffSec === 0 && activeVirtualSession) {
         // Auto-finish virtual session when timer reaches zero
-        fetch(`${serverUrl}/api/virtual-sessions/${activeVirtualSession.id}/finish`, { method: 'POST' }).catch(() => {});
+        apiFetch(`${serverUrl}/api/virtual-sessions/${activeVirtualSession.id}/finish`, { method: 'POST' }).catch(() => {});
       }
     };
 
@@ -178,7 +179,7 @@ export const ContestsView: React.FC = () => {
     setFetchError(null);
     try {
       const classParam = user?.classId ? `&classId=${user.classId}` : '';
-      const res = await fetch(`${serverUrl}/api/contests?role=user${classParam}`);
+      const res = await apiFetch(`${serverUrl}/api/contests?role=user${classParam}`);
       if (res.ok) {
         const list: Contest[] = await res.json();
         setContests(list);
@@ -188,7 +189,7 @@ export const ContestsView: React.FC = () => {
         if (user) {
           list.filter(c => c.status === 'ended').forEach(async (c) => {
             try {
-              const vRes = await fetch(`${serverUrl}/api/contests/${c.id}/virtual-sessions?userId=${user.id}`);
+              const vRes = await apiFetch(`${serverUrl}/api/contests/${c.id}/virtual-sessions?userId=${user.id}`);
               if (vRes.ok) {
                 const vsList = await vRes.json();
                 setStudentVirtualHistory(prev => ({ ...prev, [c.id]: vsList }));
@@ -218,7 +219,7 @@ export const ContestsView: React.FC = () => {
     setEnteringContestId(c.id);
     try {
       const cleanBase = (serverUrl || '').replace(/\/+$/, '');
-      const res = await fetch(`${cleanBase}/api/contests/${c.id}?role=user`);
+      const res = await apiFetch(`${cleanBase}/api/contests/${c.id}?role=user`);
       if (!res.ok) {
         const err = await res.json().catch(() => ({}));
         alert(err.error || `Không thể tải dữ liệu phòng thi (Mã lỗi HTTP: ${res.status})`);
@@ -244,7 +245,7 @@ export const ContestsView: React.FC = () => {
 
       // Register live attendance if user is logged in
       if (user) {
-        fetch(`${cleanBase}/api/contests/${c.id}/attendance`, {
+        apiFetch(`${cleanBase}/api/contests/${c.id}/attendance`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ userId: user.id, status: 'present' })
@@ -252,7 +253,7 @@ export const ContestsView: React.FC = () => {
 
         // Fetch user's official submissions for this contest
         try {
-          const subRes = await fetch(`${cleanBase}/api/submissions?userId=${user.id}&contestId=${c.id}&isVirtual=false`);
+          const subRes = await apiFetch(`${cleanBase}/api/submissions?userId=${user.id}&contestId=${c.id}&isVirtual=false`);
           if (subRes.ok) {
             setContestSubmissions(await subRes.json());
           }
@@ -272,7 +273,7 @@ export const ContestsView: React.FC = () => {
     if (!user) return;
     setStartingVirtual(true);
     try {
-      const res = await fetch(`${serverUrl}/api/contests/${c.id}/virtual-start`, {
+      const res = await apiFetch(`${serverUrl}/api/contests/${c.id}/virtual-start`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ userId: user.id, userName: user.fullName || user.username })
@@ -288,7 +289,7 @@ export const ContestsView: React.FC = () => {
       const session: VirtualSession = await res.json();
 
       // Fetch full contest details and problems
-      const contestRes = await fetch(`${serverUrl}/api/contests/${c.id}`);
+      const contestRes = await apiFetch(`${serverUrl}/api/contests/${c.id}`);
       const fullContest: Contest = await contestRes.json();
 
       setActiveContest(fullContest);
@@ -311,7 +312,7 @@ export const ContestsView: React.FC = () => {
     if (!window.confirm('Bạn có chắc chắn muốn nộp bài và kết thúc phiên thi ảo này?')) return;
 
     try {
-      await fetch(`${serverUrl}/api/virtual-sessions/${activeVirtualSession.id}/finish`, {
+      await apiFetch(`${serverUrl}/api/virtual-sessions/${activeVirtualSession.id}/finish`, {
         method: 'POST'
       });
       alert('Phiên thi ảo đã kết thúc! Kết quả của bạn đã được ghi nhận vào Bảng Xếp Hạng Thi Ảo.');
@@ -329,7 +330,7 @@ export const ContestsView: React.FC = () => {
     setVirtualLeaderboardContest(c);
     setLoadingVirtualLeaderboard(true);
     try {
-      const res = await fetch(`${serverUrl}/api/contests/${c.id}/virtual-leaderboard`);
+      const res = await apiFetch(`${serverUrl}/api/contests/${c.id}/virtual-leaderboard`);
       if (res.ok) {
         setVirtualLeaderboard(await res.json());
       }

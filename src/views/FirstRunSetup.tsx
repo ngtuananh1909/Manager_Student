@@ -30,8 +30,8 @@ export const FirstRunSetup: React.FC = () => {
       return;
     }
 
-    if (password.length < 6) {
-      setErrorMsg('Mật khẩu cần tối thiểu 6 ký tự để đảm bảo an toàn');
+    if (password.length < 10) {
+      setErrorMsg('Mật khẩu cần tối thiểu 10 ký tự để đảm bảo an toàn');
       return;
     }
 
@@ -163,7 +163,9 @@ export const FirstRunSetup: React.FC = () => {
                 className="input-field"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
-                placeholder="Tối thiểu 6 ký tự"
+                placeholder="Tối thiểu 10 ký tự"
+                minLength={10}
+                maxLength={128}
                 required
               />
             </div>
@@ -176,9 +178,11 @@ export const FirstRunSetup: React.FC = () => {
             <input
               type="password"
               className="input-field"
-              value={confirmPassword}
-              onChange={(e) => setConfirmPassword(e.target.value)}
-              placeholder="Nhập lại mật khẩu"
+                value={confirmPassword}
+                onChange={(e) => setConfirmPassword(e.target.value)}
+                placeholder="Nhập lại mật khẩu"
+                minLength={10}
+                maxLength={128}
               required
             />
           </div>

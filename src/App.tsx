@@ -76,6 +76,10 @@ const MainApp: React.FC = () => {
     return <DeviceRoleSetup onSelectRole={(r) => setDeviceRole(r)} />;
   }
 
+  if (isLoading) {
+    return <ViewLoadingFallback />;
+  }
+
   // 1. First-Run Setup Screen ONLY for Host/Teacher machine when no admin exists yet
   if (deviceRole === 'host' && isFirstRun) {
     return <FirstRunSetup />;

@@ -165,6 +165,7 @@ export interface User {
   streak?: number;
   badges?: string[];
   isLocked?: boolean;
+  mustChangePassword?: boolean;
 }
 
 export type AttendanceStatus = 'present' | 'absent_excused' | 'absent_unexcused' | 'submitted' | 'suspended';

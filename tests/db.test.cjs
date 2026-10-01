@@ -63,3 +63,32 @@ test('new persisted entity IDs remain unique when created in the same millisecon
   assert.match(ids.first, /^cls-[0-9a-f-]{36}$/);
   assert.match(ids.second, /^cls-[0-9a-f-]{36}$/);
 });
+
+test('user persistence accepts only pre-hashed passwords and can rotate the hash', () => {
+  const result = runIsolated(`
+    const db = require(process.env.SCHOOLJUDGE_DB_MODULE);
+    let missingHashRejected = false;
+    try {
+      db.createUser({ username: 'unsafe', fullName: 'Unsafe', role: 'user', classId: 'cls-1' });
+    } catch (error) {
+      missingHashRejected = error.code === 'PASSWORD_HASH_REQUIRED';
+    }
+    const user = db.createUser({
+      username: 'safe', fullName: 'Safe', role: 'user', classId: 'cls-1',
+      passwordHash: '$argon2id$initial', mustChangePassword: true
+    });
+    db.setUserPasswordHash(user.id, '$argon2id$rotated', false);
+    const updated = db.getUser(user.id);
+    process.stdout.write(JSON.stringify({
+      missingHashRejected,
+      passwordHash: updated.passwordHash,
+      mustChangePassword: updated.mustChangePassword
+    }));
+  `);
+
+  assert.deepEqual(JSON.parse(result.output), {
+    missingHashRejected: true,
+    passwordHash: '$argon2id$rotated',
+    mustChangePassword: false
+  });
+});

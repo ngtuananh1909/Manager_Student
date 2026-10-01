@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
+import { apiFetch } from '../lib/api';
 import { 
   FileText, 
   Download, 
@@ -60,6 +61,7 @@ export const StatementViewer: React.FC<StatementViewerProps> = ({
   const [wordHtml, setWordHtml] = useState<string>('');
   const [loadingWord, setLoadingWord] = useState<boolean>(false);
   const [wordError, setWordError] = useState<string>('');
+  const [authenticatedFileUrl, setAuthenticatedFileUrl] = useState<string>('');
 
   // Zoom & View state: 70% -> 200%, Fit Width, Fit Page, Fullscreen
   const [zoomLevel, setZoomLevel] = useState<number>(100);
@@ -67,6 +69,40 @@ export const StatementViewer: React.FC<StatementViewerProps> = ({
   const [isFullscreen, setIsFullscreen] = useState<boolean>(false);
   const [isCopied, setIsCopied] = useState<boolean>(false);
   const viewerContainerRef = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    if (!fullUrl) {
+      setAuthenticatedFileUrl('');
+      return;
+    }
+    if (fullUrl.startsWith('data:') || fullUrl.startsWith('blob:')) {
+      setAuthenticatedFileUrl(fullUrl);
+      return;
+    }
+
+    let objectUrl = '';
+    let cancelled = false;
+    apiFetch(fullUrl)
+      .then(response => {
+        if (!response.ok) throw new Error('Không thể tải file đề bài');
+        return response.blob();
+      })
+      .then(blob => {
+        if (cancelled) return;
+        objectUrl = URL.createObjectURL(blob);
+        setAuthenticatedFileUrl(objectUrl);
+      })
+      .catch(() => {
+        if (!cancelled) setAuthenticatedFileUrl('');
+      });
+
+    return () => {
+      cancelled = true;
+      if (objectUrl) URL.revokeObjectURL(objectUrl);
+    };
+  }, [fullUrl]);
+
+  const renderUrl = authenticatedFileUrl || (fullUrl.startsWith('data:') || fullUrl.startsWith('blob:') ? fullUrl : '');
 
   useEffect(() => {
     if (!fullUrl) return;
@@ -85,7 +121,7 @@ export const StatementViewer: React.FC<StatementViewerProps> = ({
           setLoadingText(false);
         }
       } else {
-        fetch(fullUrl)
+        apiFetch(fullUrl)
           .then(res => {
             if (!res.ok) throw new Error('Không thể tải file văn bản');
             return res.text();
@@ -100,7 +136,7 @@ export const StatementViewer: React.FC<StatementViewerProps> = ({
 
       // If pending base64 from file picker
       if (fullUrl.startsWith('data:')) {
-        fetch(`${serverUrl || ''}/api/parse-document`, {
+        apiFetch(`${serverUrl || ''}/api/parse-document`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ fileName, fileData: fullUrl })
@@ -120,7 +156,7 @@ export const StatementViewer: React.FC<StatementViewerProps> = ({
       } else {
         // From existing problem or contest endpoint
         const contentApiUrl = fullUrl.replace(/\/pdf$/, '/statement-content');
-        fetch(contentApiUrl)
+        apiFetch(contentApiUrl)
           .then(res => res.json())
           .then(data => {
             if (data && data.type === 'html' && data.content) {
@@ -379,7 +415,7 @@ export const StatementViewer: React.FC<StatementViewerProps> = ({
 
           {/* Download button */}
           <a
-            href={fullUrl}
+            href={renderUrl}
             download={fileName || 'de_bai'}
             style={{
               display: 'inline-flex',
@@ -402,7 +438,7 @@ export const StatementViewer: React.FC<StatementViewerProps> = ({
 
           {!fullUrl.startsWith('data:') && (
             <a
-              href={fullUrl}
+              href={renderUrl}
               target="_blank"
               rel="noreferrer"
               style={{
@@ -461,7 +497,7 @@ export const StatementViewer: React.FC<StatementViewerProps> = ({
                 {wordError}
               </p>
               <a 
-                href={fullUrl} 
+                href={renderUrl} 
                 download={fileName || 'de_bai.docx'}
                 className="btn btn-primary btn-sm"
                 style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', textDecoration: 'none' }}
@@ -534,7 +570,7 @@ export const StatementViewer: React.FC<StatementViewerProps> = ({
             transition: 'max-width 0.2s ease'
           }}>
             <iframe 
-              src={`${fullUrl}#toolbar=1&navpanes=0&view=${fitMode === 'fit-width' ? 'FitH' : fitMode === 'fit-page' ? 'Fit' : 'FitH'}`} 
+              src={`${renderUrl}#toolbar=1&navpanes=0&view=${fitMode === 'fit-width' ? 'FitH' : fitMode === 'fit-page' ? 'Fit' : 'FitH'}`} 
               title={title || fileName}
               style={{ 
                 width: '100%', 
@@ -598,7 +634,7 @@ export const StatementViewer: React.FC<StatementViewerProps> = ({
             transition: 'transform 0.15s ease'
           }}>
             <img 
-              src={fullUrl} 
+              src={renderUrl} 
               alt={fileName || 'Đề bài'} 
               style={{ 
                 maxWidth: '90%', 
@@ -629,7 +665,7 @@ export const StatementViewer: React.FC<StatementViewerProps> = ({
               Định dạng tài liệu này không hỗ trợ xem trực tiếp. Bạn có thể tải về để mở trên máy tính.
             </p>
             <a 
-              href={fullUrl} 
+              href={renderUrl} 
               download={fileName || 'file_de_bai'}
               className="btn btn-primary btn-sm"
               style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', textDecoration: 'none' }}

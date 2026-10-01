@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
+import { apiFetch } from '../../lib/api';
 import Editor from '@monaco-editor/react';
 import confetti from 'canvas-confetti';
 import { Problem, Submission, Verdict, Contest } from '../../types';
@@ -198,7 +199,7 @@ export const ProblemDetail: React.FC<Props> = ({
 
   useEffect(() => {
     if (contestId && serverUrl) {
-      fetch(`${serverUrl}/api/contests/${contestId}`)
+      apiFetch(`${serverUrl}/api/contests/${contestId}`)
         .then(res => res.json())
         .then(data => {
           if (data && !data.error) setContestInfo(data);
@@ -253,7 +254,7 @@ export const ProblemDetail: React.FC<Props> = ({
     setCustomTime(null);
 
     try {
-      const res = await fetch(`${serverUrl}/api/custom-run`, {
+      const res = await apiFetch(`${serverUrl}/api/custom-run`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ 
@@ -301,7 +302,7 @@ export const ProblemDetail: React.FC<Props> = ({
     setJudgeProgress({ current: 0, total: totalExpectedTests, message: 'Đang gửi code lên máy chủ chấm...' });
 
     try {
-      const res = await fetch(`${serverUrl}/api/submissions`, {
+      const res = await apiFetch(`${serverUrl}/api/submissions`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({

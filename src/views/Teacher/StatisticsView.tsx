@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { apiFetch } from '../../lib/api';
 import { Problem, Submission, Contest, ClassGroup, ContestReport } from '../../types';
 import { useNetwork } from '../../context/NetworkContext';
 import { 
@@ -56,10 +57,10 @@ export const StatisticsView: React.FC = () => {
   const fetchData = async () => {
     try {
       const [probRes, subRes, contestRes, classRes] = await Promise.all([
-        fetch(`${serverUrl}/api/problems?role=host`),
-        fetch(`${serverUrl}/api/submissions`),
-        fetch(`${serverUrl}/api/contests?role=host`),
-        fetch(`${serverUrl}/api/classes`)
+        apiFetch(`${serverUrl}/api/problems?role=host`),
+        apiFetch(`${serverUrl}/api/submissions`),
+        apiFetch(`${serverUrl}/api/contests?role=host`),
+        apiFetch(`${serverUrl}/api/classes`)
       ]);
       if (probRes.ok) setProblems(await probRes.json());
       if (subRes.ok) setSubmissions(await subRes.json());
@@ -79,7 +80,7 @@ export const StatisticsView: React.FC = () => {
   const handleOpenReport = async (contestId: string) => {
     setLoadingReport(true);
     try {
-      const res = await fetch(`${serverUrl}/api/contests/${contestId}/official-report`);
+      const res = await apiFetch(`${serverUrl}/api/contests/${contestId}/official-report`);
       if (res.ok) {
         const data = await res.json();
         setOfficialReportModal(data);

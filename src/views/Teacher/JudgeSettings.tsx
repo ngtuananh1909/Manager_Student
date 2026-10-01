@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { apiFetch } from '../../lib/api';
 import { DiagnosticsInfo } from '../../types';
 import { useNetwork } from '../../context/NetworkContext';
 import { 
@@ -45,7 +46,7 @@ export const JudgeSettings: React.FC = () => {
 
   const fetchUpdateInfo = async () => {
     try {
-      const res = await fetch(`${serverUrl}/api/update/info`);
+      const res = await apiFetch(`${serverUrl}/api/update/info`);
       if (res.ok) {
         const info = await res.json();
         setUpdateServerInfo(info);
@@ -69,7 +70,7 @@ export const JudgeSettings: React.FC = () => {
         fetchUpdateInfo();
 
         // Broadcast to all students via server
-        await fetch(`${serverUrl}/api/update/broadcast`, { method: 'POST' });
+        await apiFetch(`${serverUrl}/api/update/broadcast`, { method: 'POST' });
         setTimeout(() => setPublishMessage(''), 5000);
       } else {
         alert('Lỗi phát hành file: ' + (res.error || 'Lỗi không xác định'));
@@ -94,7 +95,7 @@ export const JudgeSettings: React.FC = () => {
 
   const fetchDiagnostics = async () => {
     try {
-      const res = await fetch(`${serverUrl}/api/diagnostics`);
+      const res = await apiFetch(`${serverUrl}/api/diagnostics`);
       if (res.ok) {
         const data: DiagnosticsInfo = await res.json();
         setDiag(data);
@@ -115,7 +116,7 @@ export const JudgeSettings: React.FC = () => {
   const handleSaveSettings = async (e: React.FormEvent) => {
     e.preventDefault();
     try {
-      const res = await fetch(`${serverUrl}/api/settings`, {
+      const res = await apiFetch(`${serverUrl}/api/settings`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({

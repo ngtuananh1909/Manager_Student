@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { apiFetch } from '../../lib/api';
 import { Submission, BatchGradeProgress } from '../../types';
 import { useNetwork } from '../../context/NetworkContext';
 import { VerdictBadge } from '../../components/VerdictBadge';
@@ -96,7 +97,7 @@ export const LiveMonitor: React.FC = () => {
 
   const fetchSubmissions = async () => {
     try {
-      const res = await fetch(`${serverUrl}/api/submissions`);
+      const res = await apiFetch(`${serverUrl}/api/submissions`);
       if (res.ok) setSubmissions(await res.json());
     } catch (e) {
       console.error(e);
@@ -105,7 +106,7 @@ export const LiveMonitor: React.FC = () => {
 
   const fetchSettings = async () => {
     try {
-      const res = await fetch(`${serverUrl}/api/diagnostics`);
+      const res = await apiFetch(`${serverUrl}/api/diagnostics`);
       if (res.ok) {
         const diag = await res.json();
         if (diag.settings) {
@@ -135,7 +136,7 @@ export const LiveMonitor: React.FC = () => {
 
   const handleToggleSubmissionPortal = async () => {
     try {
-      const res = await fetch(`${serverUrl}/api/submissions/toggle-close`, { method: 'POST' });
+      const res = await apiFetch(`${serverUrl}/api/submissions/toggle-close`, { method: 'POST' });
       if (res.ok) {
         const data = await res.json();
         setSubmissionsClosed(data.submissionsClosed);
@@ -152,7 +153,7 @@ export const LiveMonitor: React.FC = () => {
     setShowBatchSummary(false);
     setBatchProgress({ total: 0, done: 0, success: 0, errors: 0 });
     try {
-      const res = await fetch(`${serverUrl}/api/grade-all`, {
+      const res = await apiFetch(`${serverUrl}/api/grade-all`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ regrade })
@@ -170,7 +171,7 @@ export const LiveMonitor: React.FC = () => {
 
   const handleCancelBatch = async () => {
     try {
-      await fetch(`${serverUrl}/api/grade-all/cancel`, { method: 'DELETE' });
+      await apiFetch(`${serverUrl}/api/grade-all/cancel`, { method: 'DELETE' });
     } catch (e) {}
   };
 

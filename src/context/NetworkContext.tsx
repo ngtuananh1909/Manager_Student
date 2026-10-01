@@ -1,6 +1,7 @@
 import React, { createContext, useContext, useState, useEffect, useMemo, useCallback } from 'react';
 import { io, Socket } from 'socket.io-client';
 import { DiscoveredServer } from '../types';
+import { AUTH_CHANGED_EVENT, getAccessToken } from '../lib/api';
 
 export type NetworkMode = 'lan' | 'internet';
 
@@ -60,6 +61,7 @@ export const NetworkProvider: React.FC<{ children: React.ReactNode }> = ({ child
   const getServerNow = useCallback(() => Date.now() + serverTimeOffset, [serverTimeOffset]);
 
   const [socket, setSocket] = useState<Socket | null>(null);
+  const [authVersion, setAuthVersion] = useState(0);
   const [discoveredServers, setDiscoveredServers] = useState<DiscoveredServer[]>([]);
   const [isScanning, setIsScanning] = useState<boolean>(false);
 
@@ -82,37 +84,47 @@ export const NetworkProvider: React.FC<{ children: React.ReactNode }> = ({ child
     localStorage.setItem('schooljudge_internet_url', cleaned);
   };
 
-  // Socket.io connection instance
   useEffect(() => {
-    const newSocket = io(serverUrl, {
+    const handleAuthChanged = () => setAuthVersion(version => version + 1);
+    window.addEventListener(AUTH_CHANGED_EVENT, handleAuthChanged);
+    return () => window.removeEventListener(AUTH_CHANGED_EVENT, handleAuthChanged);
+  }, []);
+
+  // Socket.io connection instance. Anonymous clients use HTTP ping only.
+  useEffect(() => {
+    const accessToken = getAccessToken();
+    const newSocket = accessToken ? io(serverUrl, {
       reconnectionDelayMax: 5000,
-      timeout: 4000
-    });
+      timeout: 4000,
+      auth: { token: accessToken }
+    }) : null;
 
-    newSocket.on('connect', () => {
-      setIsConnected(true);
-      checkLatency();
-    });
+    if (newSocket) {
+      newSocket.on('connect', () => {
+        setIsConnected(true);
+        checkLatency();
+      });
 
-    newSocket.on('disconnect', () => {
-      setIsConnected(false);
-      setLatency(null);
-    });
+      newSocket.on('disconnect', () => {
+        setLatency(null);
+      });
 
-    newSocket.on('connect_error', () => {
-      setIsConnected(false);
-    });
+      newSocket.on('connect_error', () => {
+        setSocket(null);
+      });
+    }
 
     setSocket(newSocket);
+    checkLatency();
 
     // Baseline check on socket connect, and relaxed 30s interval to prevent CPU/render thrashing
     const pingInterval = setInterval(checkLatency, 30000);
 
     return () => {
       clearInterval(pingInterval);
-      newSocket.disconnect();
+      newSocket?.disconnect();
     };
-  }, [serverUrl]);
+  }, [serverUrl, authVersion]);
 
   const checkLatency = async () => {
     try {

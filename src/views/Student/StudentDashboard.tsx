@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { apiFetch } from '../../lib/api';
 import { Problem } from '../../types';
 import { useNetwork } from '../../context/NetworkContext';
 import { useAuth } from '../../context/AuthContext';
@@ -42,7 +43,7 @@ export const StudentDashboard: React.FC<Props> = ({ onSelectProblem }) => {
 
   const fetchProblems = async () => {
     try {
-      const res = await fetch(`${serverUrl}/api/problems?role=user`);
+      const res = await apiFetch(`${serverUrl}/api/problems?role=user`);
       if (res.ok) {
         const data = await res.json();
         setProblems(data);

@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { apiFetch } from '../../lib/api';
 import { Submission } from '../../types';
 import { useNetwork } from '../../context/NetworkContext';
 import { useAuth } from '../../context/AuthContext';
@@ -23,7 +24,7 @@ export const SubmissionsHistory: React.FC = () => {
   const fetchSubmissions = async () => {
     try {
       const url = user ? `${serverUrl}/api/submissions?userId=${user.id}` : `${serverUrl}/api/submissions`;
-      const res = await fetch(url);
+      const res = await apiFetch(url);
       if (res.ok) {
         const data = await res.json();
         setSubmissions(data);

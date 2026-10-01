@@ -277,10 +277,15 @@ class Database {
   }
 
   setupFirstAdmin(adminData) {
+    if (!adminData.passwordHash) {
+      const error = new Error('A pre-hashed password is required');
+      error.code = 'PASSWORD_HASH_REQUIRED';
+      throw error;
+    }
     const admin = {
       id: newId('usr'),
       username: adminData.username.trim().toLowerCase(),
-      passwordHash: this.hashPassword(adminData.password || 'admin123'),
+      passwordHash: adminData.passwordHash,
       fullName: adminData.fullName || "Quản trị viên / Giáo viên",
       role: 'host',
       classId: 'admin-class',
@@ -416,16 +421,22 @@ class Database {
   getUser(id) { return this.data.users.find(u => u.id === id || u.username === id); }
   
   createUser(user) {
+    if (!user.passwordHash) {
+      const error = new Error('A pre-hashed password is required');
+      error.code = 'PASSWORD_HASH_REQUIRED';
+      throw error;
+    }
     const newUser = {
       id: newId('usr'),
       username: user.username.trim().toLowerCase(),
-      passwordHash: this.hashPassword(user.password || '123456'),
+      passwordHash: user.passwordHash,
       fullName: user.fullName || user.username,
       role: user.role || "user",
       classId: user.classId || (this.data.classes[0]?.id || "cls-1"),
       streak: 1,
       badges: [],
       isLocked: false,
+      mustChangePassword: !!user.mustChangePassword,
       createdAt: new Date().toISOString()
     };
     this.data.users.push(newUser);
@@ -455,10 +466,16 @@ class Database {
     return null;
   }
 
-  resetUserPassword(id, newPassword = '123456') {
+  setUserPasswordHash(id, passwordHash, mustChangePassword = false) {
+    if (!passwordHash) {
+      const error = new Error('A pre-hashed password is required');
+      error.code = 'PASSWORD_HASH_REQUIRED';
+      throw error;
+    }
     const user = this.data.users.find(u => u.id === id || u.username === id);
     if (user) {
-      user.passwordHash = this.hashPassword(newPassword);
+      user.passwordHash = passwordHash;
+      user.mustChangePassword = !!mustChangePassword;
       this.save();
       return user;
     }

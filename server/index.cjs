@@ -1,10 +1,12 @@
 const fs = require('fs');
 const path = require('path');
+const crypto = require('crypto');
 const express = require('express');
 const http = require('http');
 const cors = require('cors');
 const { Server } = require('socket.io');
 const db = require('./db.cjs');
+const { AuthError, createAuthService, hashPassword, safeUser } = require('./auth.cjs');
 const judge = require('./judge.cjs');
 const queue = require('./queue.cjs');
 const lan = require('./lanDiscovery.cjs');
@@ -27,6 +29,8 @@ if (!fs.existsSync(uploadsDir)) {
 }
 
 const app = express();
+const auth = createAuthService(db);
+const requireHost = auth.requireRole('host');
 app.use((req, res, next) => {
   if (req.url && req.url.includes('//')) {
     req.url = req.url.replace(/\/{2,}/g, '/');
@@ -76,7 +80,7 @@ function loginRateLimiter(req, res, next) {
 }
 
 function submissionRateLimiter(req, res, next) {
-  const key = req.body?.userId || req.ip || req.connection.remoteAddress;
+  const key = req.user?.id || req.ip || req.connection.remoteAddress;
   const now = Date.now();
   const lastTime = submissionTimestamps.get(key) || 0;
   if (now - lastTime < 2000) { // Max 1 submission every 2 seconds
@@ -89,34 +93,42 @@ function submissionRateLimiter(req, res, next) {
 // Online User & Socket Tracking
 const onlineUsers = new Map(); // socketId -> { socketId, userId, username, fullName, role, ip, lastSeen }
 
+io.use((socket, next) => {
+  const token = String(socket.handshake.auth?.token || '');
+  const user = auth.resolveAccessToken(token);
+  if (!user) return next(new Error('AUTH_REQUIRED'));
+  socket.data.user = user;
+  socket.data.accessToken = token;
+  next();
+});
+
 // Socket.IO real-time events
 io.on('connection', (socket) => {
-  const clientIp = (socket.handshake.headers['x-forwarded-for'] || socket.handshake.address || '').replace(/^.*:/, '');
+  const clientIp = String(socket.handshake.address || '').replace(/^::ffff:/, '');
+  const user = socket.data.user;
+
+  socket.join(`user:${user.id}`);
+  socket.join(`role:${user.role}`);
+  onlineUsers.set(socket.id, {
+    socketId: socket.id,
+    userId: user.id,
+    username: user.username,
+    fullName: user.fullName,
+    role: user.role,
+    ip: clientIp || '127.0.0.1',
+    lastSeen: Date.now()
+  });
+  io.to('role:host').emit('users:online_update', Array.from(onlineUsers.values()));
 
   socket.emit('queue:status', {
     queueLength: queue.queue.length,
     activeWorkers: queue.activeWorkers
   });
 
-  socket.on('client:identify', (data) => {
-    if (data && data.userId) {
-      onlineUsers.set(socket.id, {
-        socketId: socket.id,
-        userId: data.userId,
-        username: data.username,
-        fullName: data.fullName,
-        role: data.role || 'user',
-        ip: data.ip || clientIp || '127.0.0.1',
-        lastSeen: Date.now()
-      });
-      io.emit('users:online_update', Array.from(onlineUsers.values()));
-    }
-  });
-
   socket.on('disconnect', () => {
     if (onlineUsers.has(socket.id)) {
       onlineUsers.delete(socket.id);
-      io.emit('users:online_update', Array.from(onlineUsers.values()));
+      io.to('role:host').emit('users:online_update', Array.from(onlineUsers.values()));
     }
   });
 });
@@ -142,7 +154,32 @@ app.get('/api/system/status', (req, res) => {
   });
 });
 
-app.post('/api/system/setup', (req, res) => {
+function isLoopbackRequest(req) {
+  const address = String(req.socket?.remoteAddress || '').replace(/^::ffff:/, '');
+  return address === '127.0.0.1' || address === '::1';
+}
+
+function handleAuthFailure(res, error) {
+  if (error instanceof AuthError) {
+    return res.status(error.status).json({ code: error.code, error: error.message });
+  }
+  console.error('[Auth Error]', error);
+  return res.status(500).json({ code: 'AUTH_INTERNAL_ERROR', error: 'Không thể xử lý yêu cầu xác thực.' });
+}
+
+function getBearerToken(req) {
+  const match = String(req.headers.authorization || '').match(/^Bearer\s+([^\s]+)$/i);
+  return match ? match[1] : '';
+}
+
+function generateTemporaryPassword() {
+  return crypto.randomBytes(12).toString('base64url');
+}
+
+app.post('/api/system/setup', async (req, res) => {
+  if (!isLoopbackRequest(req)) {
+    return res.status(403).json({ code: 'LOOPBACK_REQUIRED', error: 'Thiết lập ban đầu chỉ được thực hiện trên máy chủ.' });
+  }
   if (!db.isFirstRun()) {
     return res.status(400).json({ error: 'Hệ thống đã được khởi tạo tài khoản quản trị trước đó.' });
   }
@@ -150,12 +187,71 @@ app.post('/api/system/setup', (req, res) => {
   if (!username || !password) {
     return res.status(400).json({ error: 'Tên đăng nhập và mật khẩu không được để trống.' });
   }
-  const result = db.setupFirstAdmin({ username, password, fullName, serverName, className });
-  res.json({ success: true, user: result.admin, defaultClass: result.defaultClass });
+  try {
+    const passwordHash = await hashPassword(password);
+    const result = db.setupFirstAdmin({ username, passwordHash, fullName, serverName, className });
+    const session = await auth.login(username, password);
+    res.json({ success: true, ...session, user: safeUser(result.admin), defaultClass: result.defaultClass });
+  } catch (error) {
+    handleAuthFailure(res, error);
+  }
+});
+
+app.post('/api/auth/register', loginRateLimiter, async (req, res) => {
+  try {
+    const result = await auth.registerStudent(req.body || {});
+    loginAttempts.delete(req.ip || req.socket.remoteAddress);
+    res.status(201).json(result);
+  } catch (error) {
+    handleAuthFailure(res, error);
+  }
+});
+
+app.post('/api/auth/login', loginRateLimiter, async (req, res) => {
+  const ip = req.ip || req.socket.remoteAddress;
+  try {
+    const result = await auth.login(req.body?.username, req.body?.password);
+    loginAttempts.delete(ip);
+    res.json(result);
+  } catch (error) {
+    if (error instanceof AuthError && error.code === 'INVALID_CREDENTIALS') {
+      const record = loginAttempts.get(ip) || { count: 0, lockedUntil: 0 };
+      record.count += 1;
+      if (record.count >= 5) record.lockedUntil = Date.now() + 5 * 60 * 1000;
+      loginAttempts.set(ip, record);
+    }
+    handleAuthFailure(res, error);
+  }
+});
+
+app.get('/api/auth/me', auth.authenticate, (req, res) => {
+  res.json({ user: req.user });
+});
+
+app.post('/api/auth/logout', auth.authenticate, (req, res) => {
+  auth.revokeAccessToken(req.accessToken);
+  res.json({ success: true });
+});
+
+app.put('/api/auth/password', auth.authenticate, async (req, res) => {
+  try {
+    const user = await auth.changePassword(req.user.id, req.body?.currentPassword, req.body?.newPassword);
+    res.json({ success: true, user });
+  } catch (error) {
+    handleAuthFailure(res, error);
+  }
+});
+
+app.use('/api', (req, res, next) => {
+  const isPublicUpdateRead = req.method === 'GET' && (
+    req.path === '/update/check' || req.path === '/update/download'
+  );
+  if (isPublicUpdateRead) return next();
+  return auth.authenticate(req, res, next);
 });
 
 // DIAGNOSTICS & SYSTEM STATUS
-app.get('/api/diagnostics', (req, res) => {
+app.get('/api/diagnostics', requireHost, (req, res) => {
   const diag = judge.getDiagnostics();
   const ips = lan.getLocalIPs();
   res.json({
@@ -171,11 +267,11 @@ app.get('/api/diagnostics', (req, res) => {
 });
 
 // SETTINGS
-app.get('/api/settings', (req, res) => {
+app.get('/api/settings', requireHost, (req, res) => {
   res.json(db.getSettings());
 });
 
-app.put('/api/settings', (req, res) => {
+app.put('/api/settings', requireHost, (req, res) => {
   const updated = db.updateSettings(req.body);
   io.emit('settings:update', updated);
   res.json(updated);
@@ -192,16 +288,6 @@ function sanitizeProblemForStudent(p) {
         input: tc.input || '',
         output: tc.expectedOutput || ''
       }));
-
-  // If no sample was explicitly marked, take first test case as sample demonstration
-  if (samples.length === 0 && p.testCases && p.testCases.length > 0) {
-    samples.push({
-      id: 'sample-1',
-      name: 'Ví dụ 1',
-      input: p.testCases[0].input || '',
-      output: p.testCases[0].expectedOutput || ''
-    });
-  }
 
   return {
     id: p.id,
@@ -224,49 +310,57 @@ function sanitizeProblemForStudent(p) {
   };
 }
 
+function sanitizeProblemForHost(problem) {
+  if (!problem) return null;
+  const { _pdfDiskPath, testCases, ...safe } = problem;
+  return {
+    ...safe,
+    testCount: problem.testCount ?? (Array.isArray(testCases) ? testCases.length : 0),
+    testCases: []
+  };
+}
+
+function emitProblemUpdate(problem) {
+  io.to('role:host').emit('problems:update', sanitizeProblemForHost(problem));
+  io.to('role:user').emit('problems:update', sanitizeProblemForStudent(problem));
+}
+
 // PROBLEMS
 app.get('/api/problems', (req, res) => {
-  const role = req.query.role || 'user';
   const problems = db.getProblems();
-
-  // If user (student), strictly strip official test cases and return only samples
-  if (role !== 'host') {
-    return res.json(problems.map(p => sanitizeProblemForStudent(p)));
-  }
-
-  res.json(problems);
+  const serializer = req.user.role === 'host' ? sanitizeProblemForHost : sanitizeProblemForStudent;
+  res.json(problems.map(serializer));
 });
 
 app.get('/api/problems/:id', (req, res) => {
   const prob = db.getProblem(req.params.id);
   if (!prob) return res.status(404).json({ error: 'Bài tập không tồn tại' });
 
-  const role = req.query.role || 'user';
-  if (role !== 'host') {
+  if (req.user.role !== 'host') {
     return res.json(sanitizeProblemForStudent(prob));
   }
 
-  res.json(prob);
+  res.json(sanitizeProblemForHost(prob));
 });
 
-app.post('/api/problems', (req, res) => {
+app.post('/api/problems', requireHost, (req, res) => {
   try {
     const prob = db.createProblem(req.body);
-    io.emit('problems:update', prob);
+    emitProblemUpdate(prob);
     res.json(prob);
   } catch (err) {
     res.status(400).json({ error: err.message });
   }
 });
 
-app.put('/api/problems/:id', (req, res) => {
+app.put('/api/problems/:id', requireHost, (req, res) => {
   const updated = db.updateProblem(req.params.id, req.body);
   if (!updated) return res.status(404).json({ error: 'Không tìm thấy bài tập' });
-  io.emit('problems:update', updated);
+  emitProblemUpdate(updated);
   res.json(updated);
 });
 
-app.delete('/api/problems/:id', (req, res) => {
+app.delete('/api/problems/:id', requireHost, (req, res) => {
   const prob = db.getProblem(req.params.id);
   if (prob && prob._pdfDiskPath && fs.existsSync(prob._pdfDiskPath)) {
     try { fs.unlinkSync(prob._pdfDiskPath); } catch (e) {}
@@ -320,7 +414,7 @@ async function parseDocumentToHtml(filePath) {
 }
 
 // PARSE DOCUMENT ON THE FLY (FOR INSTANT DOCUMENT PREVIEW BEFORE SAVING)
-app.post('/api/parse-document', async (req, res) => {
+app.post('/api/parse-document', requireHost, async (req, res) => {
   try {
     const { fileName, fileData } = req.body;
     if (!fileData) return res.status(400).json({ error: 'Không có dữ liệu file' });
@@ -413,7 +507,7 @@ app.get('/api/problems/:id/statement-content', async (req, res) => {
 });
 
 // STATEMENT UPLOAD FOR PROBLEM (PDF, Word, Ảnh, Text...)
-app.post('/api/problems/:id/pdf', async (req, res) => {
+app.post('/api/problems/:id/pdf', requireHost, async (req, res) => {
   const prob = db.getProblem(req.params.id);
   if (!prob) return res.status(404).json({ error: 'Không tìm thấy bài tập' });
 
@@ -448,7 +542,7 @@ app.post('/api/problems/:id/pdf', async (req, res) => {
       _pdfDiskPath: filePath
     });
 
-    io.emit('problems:update', updated);
+    emitProblemUpdate(updated);
     res.json({ success: true, problem: updated });
   } catch (err) {
     res.status(500).json({ error: 'Lỗi lưu file đề bài: ' + err.message });
@@ -500,7 +594,7 @@ app.get('/api/problems/:id/pdf', (req, res) => {
 });
 
 // DELETE STATEMENT FOR PROBLEM
-app.delete('/api/problems/:id/pdf', (req, res) => {
+app.delete('/api/problems/:id/pdf', requireHost, (req, res) => {
   const prob = db.getProblem(req.params.id);
   if (!prob) return res.status(404).json({ error: 'Không tìm thấy bài tập' });
 
@@ -515,12 +609,12 @@ app.delete('/api/problems/:id/pdf', (req, res) => {
     _pdfDiskPath: ''
   });
 
-  io.emit('problems:update', updated);
+  emitProblemUpdate(updated);
   res.json({ success: true, problem: updated });
 });
 
 // STATEMENT UPLOAD FOR CONTEST (Đề thi tổng hợp kỳ thi - PDF, Word, Ảnh, Text)
-app.post('/api/contests/:id/pdf', async (req, res) => {
+app.post('/api/contests/:id/pdf', requireHost, async (req, res) => {
   const contest = db.getContest(req.params.id);
   if (!contest) return res.status(404).json({ error: 'Không tìm thấy kỳ thi' });
 
@@ -630,7 +724,7 @@ app.get('/api/contests/:id/pdf', (req, res) => {
 });
 
 // DELETE STATEMENT FOR CONTEST
-app.delete('/api/contests/:id/pdf', (req, res) => {
+app.delete('/api/contests/:id/pdf', requireHost, (req, res) => {
   const contest = db.getContest(req.params.id);
   if (!contest) return res.status(404).json({ error: 'Không tìm thấy kỳ thi' });
 
@@ -650,7 +744,7 @@ app.delete('/api/contests/:id/pdf', (req, res) => {
 });
 
 // LIST AVAILABLE SAMPLE TESTS FROM 'TEST/' DIRECTORY
-app.get('/api/sample-tests', (req, res) => {
+app.get('/api/sample-tests', requireHost, (req, res) => {
   const testRoot = path.join(process.cwd(), 'TEST');
   if (!fs.existsSync(testRoot)) {
     return res.json([]);
@@ -705,7 +799,7 @@ app.get('/api/sample-tests', (req, res) => {
 });
 
 // IMPORT SAMPLE PROBLEMS FROM 'TEST/' FOLDER
-app.post('/api/sample-tests/import', (req, res) => {
+app.post('/api/sample-tests/import', requireHost, (req, res) => {
   const { folder, folders, importAll } = req.body || {};
   const testRoot = path.join(process.cwd(), 'TEST');
   if (!fs.existsSync(testRoot)) {
@@ -805,7 +899,7 @@ app.post('/api/sample-tests/import', (req, res) => {
         }
       }
 
-      io.emit('problems:update', probObj);
+      emitProblemUpdate(probObj);
       importedProblems.push(probObj);
     }
 
@@ -820,7 +914,7 @@ app.post('/api/sample-tests/import', (req, res) => {
 });
 
 // IMPORT TESTCASES FROM DIRECTORY FORMAT: {ten}/test0x/{ten}.inp,.out
-app.post('/api/problems/:id/import-folder', (req, res) => {
+app.post('/api/problems/:id/import-folder', requireHost, (req, res) => {
   const prob = db.getProblem(req.params.id);
   if (!prob) return res.status(404).json({ error: 'Không tìm thấy bài tập' });
 
@@ -877,12 +971,12 @@ app.post('/api/problems/:id/import-folder', (req, res) => {
 
   const finalTestCases = append ? [...currentTestCases, ...validTestCases] : validTestCases;
   const updated = db.updateProblem(prob.id, { testCases: finalTestCases });
-  io.emit('problems:update', updated);
+  emitProblemUpdate(updated);
   res.json({ success: true, count: finalTestCases.length, problem: updated });
 });
 
 // GET TESTCASES ON DEMAND FOR TEACHER (Lazy-loaded, ultra-fast)
-app.get('/api/problems/:id/testcases', (req, res) => {
+app.get('/api/problems/:id/testcases', requireHost, (req, res) => {
   const prob = db.getProblem(req.params.id);
   if (!prob) return res.status(404).json({ error: 'Không tìm thấy bài tập' });
   const testCases = db.getProblemTestCases(prob.id);
@@ -890,15 +984,48 @@ app.get('/api/problems/:id/testcases', (req, res) => {
 });
 
 // DIRECT TESTCASES UPDATE (Add, edit, delete, reorder, score weight, sample toggle)
-app.put('/api/problems/:id/testcases', (req, res) => {
+app.put('/api/problems/:id/testcases', requireHost, (req, res) => {
   const prob = db.getProblem(req.params.id);
   if (!prob) return res.status(404).json({ error: 'Không tìm thấy bài tập' });
   const { testCases } = req.body;
   if (!Array.isArray(testCases)) return res.status(400).json({ error: 'Dữ liệu test cases không hợp lệ' });
   const updated = db.updateProblem(prob.id, { testCases });
-  io.emit('problems:update', updated);
+  emitProblemUpdate(updated);
   res.json({ success: true, count: testCases.length, testCases: updated.testCases });
 });
+
+function sanitizeSubmissionForStudent(submission) {
+  if (!submission) return null;
+  return {
+    id: submission.id,
+    userId: submission.userId,
+    userName: submission.userName,
+    problemId: submission.problemId,
+    problemCode: submission.problemCode,
+    code: submission.code,
+    status: submission.status,
+    score: submission.score,
+    passedTests: submission.passedTests,
+    totalTests: submission.totalTests,
+    executionTime: submission.executionTime,
+    memoryUsed: submission.memoryUsed,
+    submittedAt: submission.submittedAt,
+    compileError: submission.compileError,
+    contestId: submission.contestId,
+    isVirtual: !!submission.isVirtual,
+    participationType: submission.participationType,
+    virtualSessionId: submission.virtualSessionId,
+    details: (submission.details || []).map(detail => ({
+      testIndex: detail.testIndex,
+      name: detail.name,
+      status: detail.status,
+      time: detail.time,
+      memory: detail.memory,
+      scoreEarned: detail.scoreEarned,
+      message: detail.message
+    }))
+  };
+}
 
 // SUBMISSIONS
 app.get('/api/submissions', (req, res) => {
@@ -1075,7 +1202,8 @@ app.post('/api/submissions', submissionRateLimiter, (req, res) => {
     queue.enqueue(sub.id);
   }
 
-  io.emit('submission:created', sub);
+  io.to('role:host').emit('submission:created', sub);
+  io.to(`user:${sub.userId}`).emit('submission:created', sanitizeSubmissionForStudent(sub));
   res.json({
     ...sub,
     mode: isBatchMode ? 'batch' : 'direct',
@@ -1084,7 +1212,7 @@ app.post('/api/submissions', submissionRateLimiter, (req, res) => {
 });
 
 // Toggle submission portal open/close
-app.post('/api/submissions/toggle-close', (req, res) => {
+app.post('/api/submissions/toggle-close', requireHost, (req, res) => {
   const current = db.getSettings();
   const updated = db.updateSettings({ submissionsClosed: !current.submissionsClosed });
   io.emit('settings:update', updated);
@@ -1113,7 +1241,7 @@ app.get('/api/leaderboard', (req, res) => {
 // In-memory cancel token per job
 let batchGradeJob = null; // { cancel: boolean }
 
-app.post('/api/grade-all', async (req, res) => {
+app.post('/api/grade-all', requireHost, async (req, res) => {
   // Accept optional problemId filter
   const { problemId, regrade = false } = req.body || {};
 
@@ -1216,7 +1344,7 @@ app.post('/api/grade-all', async (req, res) => {
   io.emit('leaderboard:update', db.getLeaderboard());
 });
 
-app.delete('/api/grade-all/cancel', (req, res) => {
+app.delete('/api/grade-all/cancel', requireHost, (req, res) => {
   if (batchGradeJob) {
     batchGradeJob.cancel = true;
     res.json({ message: 'Hủy đang được xử lý...' });
@@ -1350,7 +1478,7 @@ function processContestImportedProblems(importedProblems, existingProblemIds = [
   return problemIds;
 }
 
-app.post('/api/contests', (req, res) => {
+app.post('/api/contests', requireHost, (req, res) => {
   try {
     const { title, importedProblems, problemConfigs } = req.body;
     if (!title || !String(title).trim()) {
@@ -1381,7 +1509,7 @@ app.post('/api/contests', (req, res) => {
   }
 });
 
-app.put('/api/contests/:id', (req, res) => {
+app.put('/api/contests/:id', requireHost, (req, res) => {
   try {
     const { problemConfigs } = req.body;
     let updateData = { ...req.body };
@@ -1412,14 +1540,14 @@ app.put('/api/contests/:id', (req, res) => {
   }
 });
 
-app.delete('/api/contests/:id', (req, res) => {
+app.delete('/api/contests/:id', requireHost, (req, res) => {
   const ok = db.deleteContest(req.params.id);
   if (!ok) return res.status(404).json({ error: 'Kỳ thi không tồn tại' });
   io.emit('contest:deleted', { id: req.params.id });
   res.json({ success: true });
 });
 
-app.post('/api/contests/:id/toggle-status', (req, res) => {
+app.post('/api/contests/:id/toggle-status', requireHost, (req, res) => {
   const contest = db.getContest(req.params.id);
   if (!contest) return res.status(404).json({ error: 'Kỳ thi không tồn tại' });
   const { status } = req.body; // 'running' | 'ended' | 'upcoming'
@@ -1468,7 +1596,7 @@ app.get('/api/contests/:id/virtual-leaderboard', (req, res) => {
 });
 
 // CONTEST ATTENDANCE & ROOM CONTROL
-app.get('/api/contests/:id/attendance', (req, res) => {
+app.get('/api/contests/:id/attendance', requireHost, (req, res) => {
   const attendance = db.getContestAttendance(req.params.id);
   // Merge live socket online status & IP
   const onlineList = Array.from(onlineUsers.values());
@@ -1483,7 +1611,7 @@ app.get('/api/contests/:id/attendance', (req, res) => {
   res.json(enriched);
 });
 
-app.post('/api/contests/:id/attendance', (req, res) => {
+app.post('/api/contests/:id/attendance', requireHost, (req, res) => {
   const { userId, status, reason, extraMinutes } = req.body;
   if (!userId) return res.status(400).json({ error: 'Thiếu userId' });
   const updated = db.updateContestAttendance(req.params.id, userId, { status, reason, extraMinutes });
@@ -1491,7 +1619,7 @@ app.post('/api/contests/:id/attendance', (req, res) => {
   res.json(updated);
 });
 
-app.post('/api/contests/:id/candidates', (req, res) => {
+app.post('/api/contests/:id/candidates', requireHost, (req, res) => {
   const { candidateIds } = req.body;
   if (!Array.isArray(candidateIds)) return res.status(400).json({ error: 'Danh sách candidateIds không hợp lệ' });
   const contest = db.updateContestCandidates(req.params.id, candidateIds);
@@ -1500,7 +1628,7 @@ app.post('/api/contests/:id/candidates', (req, res) => {
   res.json({ success: true, count: candidateIds.length, contest });
 });
 
-app.post('/api/contests/:id/extra-time', (req, res) => {
+app.post('/api/contests/:id/extra-time', requireHost, (req, res) => {
   const { userId, extraMinutes = 5 } = req.body;
   if (!userId) return res.status(400).json({ error: 'Thiếu userId' });
   const updated = db.addExtraTime(req.params.id, userId, extraMinutes);
@@ -1520,7 +1648,7 @@ app.post('/api/contests/:id/extra-time', (req, res) => {
   res.json({ success: true, extraMinutes, totalExtraMinutes: updated.extraMinutes });
 });
 
-app.post('/api/contests/:id/reopen', (req, res) => {
+app.post('/api/contests/:id/reopen', requireHost, (req, res) => {
   const { userId } = req.body;
   if (!userId) return res.status(400).json({ error: 'Thiếu userId' });
   const updated = db.reopenContestForUser(req.params.id, userId);
@@ -1536,7 +1664,7 @@ app.post('/api/contests/:id/reopen', (req, res) => {
   res.json({ success: true, message: 'Đã mở lại lượt thi thành công' });
 });
 
-app.post('/api/contests/:id/suspend', (req, res) => {
+app.post('/api/contests/:id/suspend', requireHost, (req, res) => {
   const { userId, reason = 'Vi phạm quy chế phòng thi' } = req.body;
   if (!userId) return res.status(400).json({ error: 'Thiếu userId' });
   const updated = db.updateContestAttendance(req.params.id, userId, { status: 'suspended', reason });
@@ -1553,32 +1681,46 @@ app.post('/api/contests/:id/suspend', (req, res) => {
 });
 
 // CLASSES & USERS
-app.get('/api/classes', (req, res) => {
+app.get('/api/classes', requireHost, (req, res) => {
   res.json(db.getClasses());
 });
 
-app.post('/api/classes', (req, res) => {
+app.post('/api/classes', requireHost, (req, res) => {
   const cls = db.createClass(req.body);
   res.json(cls);
 });
 
-app.get('/api/users', (req, res) => {
-  res.json(db.getUsers());
+app.get('/api/users', requireHost, (req, res) => {
+  res.json(db.getUsers().map(safeUser));
 });
 
-app.post('/api/users', (req, res) => {
-  const user = db.createUser(req.body);
-  res.json(user);
+app.post('/api/users', requireHost, async (req, res) => {
+  try {
+    const temporaryPassword = generateTemporaryPassword();
+    const passwordHash = await hashPassword(temporaryPassword);
+    const user = db.createUser({
+      username: req.body?.username,
+      fullName: req.body?.fullName,
+      role: 'user',
+      classId: req.body?.classId,
+      passwordHash,
+      mustChangePassword: true
+    });
+    res.status(201).json({ user: safeUser(user), temporaryPassword });
+  } catch (error) {
+    handleAuthFailure(res, error);
+  }
 });
 
 // BATCH CREATE STUDENTS
-app.post('/api/users/batch', (req, res) => {
+app.post('/api/users/batch', requireHost, async (req, res) => {
   const { students, classId } = req.body;
   if (!Array.isArray(students) || students.length === 0) {
     return res.status(400).json({ error: 'Danh sách học sinh không hợp lệ' });
   }
 
   const created = [];
+  const credentials = [];
   const existingUsers = db.getUsers();
 
   for (const s of students) {
@@ -1587,48 +1729,55 @@ app.post('/api/users/batch', (req, res) => {
 
     let user = existingUsers.find(u => u.username === cleanUser);
     if (!user) {
+      const temporaryPassword = generateTemporaryPassword();
+      const passwordHash = await hashPassword(temporaryPassword);
       user = db.createUser({
         username: cleanUser,
-        password: s.password || '123456',
+        passwordHash,
         fullName: s.fullName || cleanUser,
         role: 'user',
-        classId: s.classId || classId || (db.getClasses()[0]?.id || 'cls-1')
+        classId: s.classId || classId || (db.getClasses()[0]?.id || 'cls-1'),
+        mustChangePassword: true
       });
-      created.push(user);
+      created.push(safeUser(user));
+      credentials.push({ username: user.username, temporaryPassword });
       existingUsers.push(user);
     }
   }
 
-  res.json({ success: true, count: created.length, created });
+  res.json({ success: true, count: created.length, created, credentials });
 });
 
 // RESET STUDENT PASSWORD
-app.put('/api/users/:id/reset-password', (req, res) => {
-  const { newPassword = '123456' } = req.body;
-  const user = db.resetUserPassword(req.params.id, newPassword);
+app.put('/api/users/:id/reset-password', requireHost, async (req, res) => {
+  const temporaryPassword = generateTemporaryPassword();
+  const passwordHash = await hashPassword(temporaryPassword);
+  const user = db.setUserPasswordHash(req.params.id, passwordHash, true);
   if (!user) return res.status(404).json({ error: 'Không tìm thấy người dùng' });
-  res.json({ success: true, message: 'Đã đặt lại mật khẩu thành công', user });
+  auth.revokeUserSessions(user.id);
+  res.json({ success: true, message: 'Đã đặt lại mật khẩu thành công', user: safeUser(user), temporaryPassword });
 });
 
 // ONLINE USERS
-app.get('/api/users/online', (req, res) => {
+app.get('/api/users/online', requireHost, (req, res) => {
   res.json(Array.from(onlineUsers.values()));
 });
 
 // UPDATE USER DETAILS
-app.put('/api/users/:id', (req, res) => {
+app.put('/api/users/:id', requireHost, (req, res) => {
   const updated = db.updateUser(req.params.id, req.body);
   if (!updated) return res.status(404).json({ error: 'Không tìm thấy người dùng' });
-  res.json(updated);
+  res.json(safeUser(updated));
 });
 
 // TOGGLE USER LOCK
-app.post('/api/users/:id/toggle-lock', (req, res) => {
+app.post('/api/users/:id/toggle-lock', requireHost, (req, res) => {
   const updated = db.toggleUserLock(req.params.id);
   if (!updated) return res.status(404).json({ error: 'Không tìm thấy người dùng' });
   
   // If user is locked, disconnect any active sockets
   if (updated.isLocked) {
+    auth.revokeUserSessions(updated.id);
     for (const [sockId, client] of onlineUsers.entries()) {
       if (client.userId === req.params.id) {
         const targetSock = io.sockets.sockets.get(sockId);
@@ -1640,83 +1789,36 @@ app.post('/api/users/:id/toggle-lock', (req, res) => {
     }
   }
 
-  res.json(updated);
+  res.json(safeUser(updated));
 });
 
 // GET USER EXAM HISTORY & PORTFOLIO
-app.get('/api/users/:id/history', (req, res) => {
+app.get('/api/users/:id/history', requireHost, (req, res) => {
   const history = db.getUserExamHistory(req.params.id);
   res.json(history);
 });
 
 // DELETE STUDENT ACCOUNT
-app.delete('/api/users/:id', (req, res) => {
+app.delete('/api/users/:id', requireHost, (req, res) => {
   const user = db.getUser(req.params.id);
   if (user && user.role === 'host') {
     return res.status(403).json({ error: 'Không thể xóa tài khoản Quản trị viên (Admin)' });
   }
   const ok = db.deleteUser(req.params.id);
   if (!ok) return res.status(404).json({ error: 'Không tìm thấy người dùng' });
+  auth.revokeUserSessions(req.params.id);
   res.json({ success: true });
 });
 
-// AUTHENTICATION WITH BRUTE-FORCE PROTECTION
-app.post('/api/auth/login', loginRateLimiter, (req, res) => {
-  const { username, password, fullName, classId } = req.body;
-  const ip = req.ip || req.connection.remoteAddress;
-
-  if (!username) return res.status(400).json({ error: 'Vui lòng nhập tên đăng nhập' });
-
-  let user = db.authenticate(username, password || '');
-
-  // If user doesn't exist and system already has an admin, check if student can auto-join
-  if (!user && !db.isFirstRun()) {
-    const existing = db.getUser(username);
-    if (!existing) {
-      // Auto register student with class
-      user = db.createUser({
-        username,
-        password: password || '123456',
-        fullName: fullName || username,
-        role: 'user',
-        classId: classId || (db.getClasses()[0]?.id || 'cls-1')
-      });
-    } else {
-      // Existing user but password failed
-      const record = loginAttempts.get(ip) || { count: 0, lockedUntil: 0 };
-      record.count++;
-      if (record.count >= 5) {
-        record.lockedUntil = Date.now() + 5 * 60 * 1000;
-        loginAttempts.set(ip, record);
-        return res.status(429).json({ error: 'Đăng nhập sai quá 5 lần. IP tạm thời bị khóa trong 5 phút.' });
-      }
-      loginAttempts.set(ip, record);
-      return res.status(401).json({ error: `Sai mật khẩu! (Lần ${record.count}/5)` });
-    }
-  }
-
-  if (!user) {
-    return res.status(401).json({ error: 'Tài khoản không tồn tại hoặc sai thông tin đăng nhập' });
-  }
-
-  if (user.isLocked) {
-    return res.status(403).json({ error: 'Tài khoản của bạn đã bị tạm khóa bởi giáo viên. Vui lòng liên hệ giám thị phòng máy.' });
-  }
-
-  // Clear attempts on success
-  loginAttempts.delete(ip);
-  res.json(user);
-});
-
 // ANTI-CHEAT PLAGIARISM CHECKER
-app.get('/api/anticheat/scan/:problemId', (req, res) => {
+app.get('/api/anticheat/scan/:problemId', requireHost, (req, res) => {
   const threshold = Number(req.query.threshold) || 60;
   const results = antiCheat.scanProblemSubmissions(req.params.problemId, threshold);
   res.json(results);
 });
 
 // EXPORT REPORT (CSV)
-app.get('/api/export/csv', (req, res) => {
+app.get('/api/export/csv', requireHost, (req, res) => {
   const leaderboard = db.getLeaderboard();
   const problems = db.getProblems();
 
@@ -1741,13 +1843,13 @@ app.get('/api/export/csv', (req, res) => {
 });
 
 // OFFICIAL CONTEST REPORT & EXPORT (Strictly REAL participants only)
-app.get('/api/contests/:id/official-report', (req, res) => {
+app.get('/api/contests/:id/official-report', requireHost, (req, res) => {
   const report = db.getOfficialContestReport(req.params.id);
   if (!report) return res.status(404).json({ error: 'Không tìm thấy kỳ thi' });
   res.json(report);
 });
 
-app.get('/api/contests/:id/export-official-csv', (req, res) => {
+app.get('/api/contests/:id/export-official-csv', requireHost, (req, res) => {
   const report = db.getOfficialContestReport(req.params.id);
   if (!report) return res.status(404).send('Không tìm thấy kỳ thi');
 
@@ -1866,7 +1968,7 @@ app.get('/api/update/check', (req, res) => {
 });
 
 // Get update info
-app.get('/api/update/info', (req, res) => {
+app.get('/api/update/info', requireHost, (req, res) => {
   const latest = findLatestInstaller();
   const updatesDir = getUpdatesDir();
 
@@ -1922,7 +2024,7 @@ app.get('/api/update/download', (req, res) => {
 });
 
 // Broadcast update notification to all connected students via Socket.IO
-app.post('/api/update/broadcast', (req, res) => {
+app.post('/api/update/broadcast', requireHost, (req, res) => {
   const latest = findLatestInstaller();
   if (latest) {
     io.emit('system:update_available', {
