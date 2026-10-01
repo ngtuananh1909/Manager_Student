@@ -1,0 +1,26 @@
+# Dependencies
+node_modules/
+package-lock.json
+
+# Build outputs
+dist/
+dist-electron/
+release/
+
+# Temp files and judge runners
+.temp_runner/
+*.tmp
+*.exe
+*.o
+*.obj
+*.log
+
+# Uploads & local data
+uploads/pdfs/*
+!uploads/pdfs/.gitkeep
+testcases/*
+!testcases/.gitkeep
+
+# OS generated
+.DS_Store
+Thumbs.db
