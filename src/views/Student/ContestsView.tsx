@@ -1112,52 +1112,6 @@ export const ContestsView: React.FC = () => {
         </div>
       )}
 
-      {/* ── MODAL: XEM ĐỀ THI TỔNG HỢP PDF CHO HỌC SINH ─────── */}
-      {viewingContestPdf && activeContest && activeContest.pdfUrl && (
-        <div className="modal-overlay" onClick={() => setViewingContestPdf(false)} style={{ zIndex: 9999 }}>
-          <div 
-            className="glass-panel" 
-            style={{ width: '95%', maxWidth: '980px', height: '90vh', display: 'flex', flexDirection: 'column', padding: '20px' }}
-            onClick={e => e.stopPropagation()}
-          >
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '12px' }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                <FileText size={22} color="var(--accent-rose)" />
-                <div>
-                  <h3 style={{ fontSize: '1.15rem', margin: 0 }}>Đề Thi: {activeContest.title}</h3>
-                  <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
-                    {activeContest.pdfFileName || 'de_thi.pdf'}
-                  </div>
-                </div>
-              </div>
-
-              <div style={{ display: 'flex', gap: '8px' }}>
-                <a 
-                  href={`${serverUrl}${activeContest.pdfUrl}`}
-                  download={activeContest.pdfFileName || `${activeContest.title}.pdf`}
-                  className="btn btn-secondary btn-sm"
-                  style={{ display: 'inline-flex', alignItems: 'center', gap: '5px', textDecoration: 'none' }}
-                >
-                  <Download size={13} /> Tải Về Máy
-                </a>
-                <button className="btn btn-outline btn-sm" onClick={() => setViewingContestPdf(false)}>
-                  <X size={15} />
-                </button>
-              </div>
-            </div>
-
-            <div style={{ flex: 1, overflow: 'hidden' }}>
-              <StatementViewer
-                url={activeContest.pdfUrl}
-                fileName={activeContest.pdfFileName}
-                title={activeContest.title}
-                serverUrl={serverUrl}
-                height="100%"
-              />
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   );
 };

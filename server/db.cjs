@@ -1,9 +1,18 @@
 const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
-const { v4: uuidv4 } = require('uuid');
+
+function newId(prefix) {
+  return `${prefix}-${crypto.randomUUID()}`;
+}
 
 function getDataDir() {
+  if (process.env.SCHOOLJUDGE_DATA_DIR) {
+    const configuredPath = path.resolve(process.env.SCHOOLJUDGE_DATA_DIR);
+    if (!fs.existsSync(configuredPath)) fs.mkdirSync(configuredPath, { recursive: true });
+    return configuredPath;
+  }
+
   try {
     const electron = require('electron');
     const app = electron.app || electron.remote?.app;
@@ -269,7 +278,7 @@ class Database {
 
   setupFirstAdmin(adminData) {
     const admin = {
-      id: "usr-" + Date.now(),
+      id: newId('usr'),
       username: adminData.username.trim().toLowerCase(),
       passwordHash: this.hashPassword(adminData.password || 'admin123'),
       fullName: adminData.fullName || "Quản trị viên / Giáo viên",
@@ -286,7 +295,7 @@ class Database {
 
     // Seed a default class for students
     const defaultClass = {
-      id: "cls-" + Date.now(),
+      id: newId('cls'),
       name: adminData.className || "Lớp Tin Học 1",
       teacher: admin.fullName,
       joinCode: "TIN01"
@@ -337,7 +346,7 @@ class Database {
   createProblem(prob) {
     if (!this.data.problems) this.data.problems = [];
     const globalMem = this.data.settings?.globalMemoryLimit || 256;
-    const probId = "prob-" + Date.now() + "-" + Math.random().toString(36).substring(2, 6);
+    const probId = newId('prob');
     const rawTestCases = Array.isArray(prob.testCases) ? prob.testCases : [];
     
     // Save testcases to dedicated storage
@@ -408,7 +417,7 @@ class Database {
   
   createUser(user) {
     const newUser = {
-      id: "usr-" + Date.now(),
+      id: newId('usr'),
       username: user.username.trim().toLowerCase(),
       passwordHash: this.hashPassword(user.password || '123456'),
       fullName: user.fullName || user.username,
@@ -482,7 +491,7 @@ class Database {
   getClasses() { return this.data.classes; }
   createClass(cls) {
     const newClass = {
-      id: "cls-" + Date.now(),
+      id: newId('cls'),
       name: cls.name.trim(),
       teacher: cls.teacher || "Giáo viên",
       joinCode: (cls.joinCode || Math.random().toString(36).substring(2, 8)).toUpperCase()
@@ -520,7 +529,7 @@ class Database {
 
   createSubmission(sub) {
     const newSub = {
-      id: "sub-" + Date.now(),
+      id: newId('sub'),
       userId: sub.userId,
       userName: sub.userName || "Học sinh",
       problemId: sub.problemId,
@@ -618,7 +627,7 @@ class Database {
   createContest(contest) {
     if (!this.data.contests) this.data.contests = [];
     const newContest = {
-      id: "cnt-" + Date.now(),
+      id: newId('cnt'),
       title: String(contest.title || "").trim(),
       description: String(contest.description || ""),
       mode: contest.mode || "offline", // "offline" = Mạng LAN phòng máy; "online" = Trực tuyến qua Internet
@@ -769,7 +778,7 @@ class Database {
     const duration = durationMinutes || (contest ? contest.durationMinutes : 90);
     const now = Date.now();
     const session = {
-      id: `vs-${Date.now()}-${uuidv4().slice(0, 8)}`,
+      id: newId('vs'),
       userId,
       userName,
       contestId,

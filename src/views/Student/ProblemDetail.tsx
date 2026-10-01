@@ -59,7 +59,7 @@ export const ProblemDetail: React.FC<Props> = ({
   contestDocFileName
 }) => {
   const { user } = useAuth();
-  const { serverUrl, socket } = useNetwork();
+  const { serverUrl, socket, isConnected } = useNetwork();
 
   // Storage key for auto-saving drafts per problem
   const storageKey = `schooljudge_draft_${contestId || 'free'}_${problem.id}`;

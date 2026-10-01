@@ -30,6 +30,9 @@ export interface Problem {
   memoryLimit: number; // MB
   category: string;
   description: string;
+  inputDescription?: string;
+  outputDescription?: string;
+  constraints?: string;
   statement?: string;
   statementHtml?: string;
   samples?: ProblemSample[];

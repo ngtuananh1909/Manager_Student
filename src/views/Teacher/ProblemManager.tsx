@@ -25,7 +25,7 @@ import {
   Eye,
   Copy,
   Check,
-  Balance,
+  FlaskConical,
   RefreshCw
 } from 'lucide-react';
 

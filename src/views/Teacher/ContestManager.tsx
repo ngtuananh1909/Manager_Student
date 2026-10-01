@@ -1431,7 +1431,7 @@ export const ContestManager: React.FC = () => {
           <p style={{ fontSize: '0.85rem', maxWidth: '460px', margin: '0 auto 18px auto' }}>
             Tạo kỳ thi mới để học sinh trong phòng máy bắt đầu làm bài, nộp code và theo dõi bảng xếp hạng trực tiếp.
           </p>
-          <button className="btn btn-primary btn-sm" onClick={handleOpenCreateModal}>
+          <button className="btn btn-primary btn-sm" onClick={() => handleOpenCreateModal()}>
             <Plus size={15} /> Tạo Kỳ Thi Đầu Tiên
           </button>
         </div>
@@ -3520,4 +3520,3 @@ export const ContestManager: React.FC = () => {
     </div>
   );
 };
-

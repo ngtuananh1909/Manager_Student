@@ -157,7 +157,7 @@ export const ClassManager: React.FC = () => {
 
   // Batch Quick Generate (hs01 -> hs40)
   const handleBatchGenerate = async () => {
-    const list = [];
+    const list: Array<{ username: string; fullName: string; password: string; classId: string }> = [];
     const prefix = (batchForm.prefix || 'hs').trim().toLowerCase();
     const count = Number(batchForm.count) || 35;
     const start = Number(batchForm.startNum) || 1;
@@ -201,7 +201,7 @@ export const ClassManager: React.FC = () => {
   const handlePasteGenerate = async () => {
     if (!pasteText.trim()) return;
     const lines = pasteText.split('\n').map(l => l.trim()).filter(Boolean);
-    const list = [];
+    const list: Array<{ username: string; fullName: string; password: string; classId: string }> = [];
     const classTarget = pasteClassId || (classes[0]?.id || 'cls-1');
 
     lines.forEach((line, idx) => {
