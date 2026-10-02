@@ -2,6 +2,7 @@ const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
 const { DEFAULT_ACHIEVEMENTS, DEFAULT_REWARDS } = require('./achievementsData.cjs');
+const { resolveProblemSubmission, SCORING_MODES } = require('./scoring.cjs');
 
 function newId(prefix) {
   return `${prefix}-${crypto.randomUUID()}`;
@@ -630,8 +631,16 @@ class Database {
       };
     }
 
+    const pretestContestIds = new Set(
+      (this.data.contests || [])
+        .filter(c => c.scoringMode === 'PRETEST')
+        .map(c => c.id)
+    );
+
     for (const sub of this.data.submissions) {
       if (!userMap[sub.userId]) continue;
+      if (sub.isVirtual) continue;
+      if (sub.contestId && pretestContestIds.has(sub.contestId)) continue;
       userMap[sub.userId].totalSubmissions++;
       const currentScore = userMap[sub.userId].solvedProblems[sub.problemId]?.score || 0;
       if (sub.score > currentScore) {
@@ -699,7 +708,7 @@ class Database {
       targetClasses,
       targetStudents,
       totalScore: Number(contest.totalScore) || 100, // Tổng điểm toàn kỳ thi (mặc định 100)
-      memoryLimit: Math.min(272, Math.max(240, Number(contest.memoryLimit) || 256)), // RAM 240-272 MB, mặc định 256 MB
+      memoryLimit: Math.min(5120, Math.max(16, Number(contest.memoryLimit) || 256)), // RAM tối đa 5120 MB (5 GB), mặc định 256 MB
       category: contest.category || "regular",
       classIds: Array.isArray(contest.classIds) ? contest.classIds : (targetClasses || []), // Array of class IDs allowed to take contest ([] = all)
       candidateIds: Array.isArray(contest.candidateIds) ? contest.candidateIds : (targetStudents || []),
@@ -719,6 +728,7 @@ class Database {
       requireFreopen: !!contest.requireFreopen,
       allowReopen: contest.allowReopen !== false,
       ioMode: contest.ioMode || (contest.requireFreopen ? 'freopen' : 'stdin'),
+      scoringMode: ['LIVE_BEST', 'OLYMPIC_LATEST', 'PRETEST'].includes(contest.scoringMode) ? contest.scoringMode : 'LIVE_BEST',
       ipWhitelist: String(contest.ipWhitelist || '').trim(),
       antiCheat: {
         preventTabSwitch: contest.antiCheat?.preventTabSwitch !== false,
@@ -754,7 +764,7 @@ class Database {
         merged.totalScore = Number(updates.totalScore);
       }
       if (updates.memoryLimit !== undefined) {
-        merged.memoryLimit = Math.min(272, Math.max(240, Number(updates.memoryLimit) || 256));
+        merged.memoryLimit = Math.min(5120, Math.max(16, Number(updates.memoryLimit) || 256));
       }
       if (updates.category !== undefined) {
         merged.category = updates.category;
@@ -764,6 +774,9 @@ class Database {
       }
       if (updates.ioMode !== undefined) {
         merged.ioMode = updates.ioMode;
+      }
+      if (updates.scoringMode !== undefined) {
+        merged.scoringMode = ['LIVE_BEST', 'OLYMPIC_LATEST', 'PRETEST'].includes(updates.scoringMode) ? updates.scoringMode : 'LIVE_BEST';
       }
       this.data.contests[idx] = merged;
       this.flushSync();
@@ -875,6 +888,11 @@ class Database {
       return true;
     });
 
+    const scoringMode = contest.scoringMode || 'LIVE_BEST';
+    const isPretest = scoringMode === 'PRETEST';
+
+    // Group submissions by user and problem
+    const userProblemSubs = {};
     for (const sub of contestSubs) {
       if (!userMap[sub.userId]) {
         if (isVirtual) {
@@ -888,20 +906,36 @@ class Database {
             problemsSolved: 0,
             totalSubmissions: 0,
             solvedProblems: {},
-            badges: []
+            badges: [],
+            isPretest,
+            isOfficial: !isPretest && !isVirtual
           };
         } else {
           continue;
         }
       }
       userMap[sub.userId].totalSubmissions++;
-      const currentScore = userMap[sub.userId].solvedProblems[sub.problemId]?.score || 0;
-      if (sub.score >= currentScore) {
-        userMap[sub.userId].solvedProblems[sub.problemId] = {
-          score: sub.score,
-          status: sub.status,
-          time: sub.executionTime
-        };
+      if (!userProblemSubs[sub.userId]) userProblemSubs[sub.userId] = {};
+      if (!userProblemSubs[sub.userId][sub.problemId]) userProblemSubs[sub.userId][sub.problemId] = [];
+      userProblemSubs[sub.userId][sub.problemId].push(sub);
+    }
+
+    // Resolve final submission per problem according to contest scoringMode
+    for (const userId of Object.keys(userProblemSubs)) {
+      const probMap = userProblemSubs[userId];
+      for (const pId of Object.keys(probMap)) {
+        const pSubs = probMap[pId];
+        const res = resolveProblemSubmission(pSubs, scoringMode);
+        if (res.finalSubmission) {
+          userMap[userId].solvedProblems[pId] = {
+            score: res.finalScore,
+            status: res.finalSubmission.status,
+            time: res.finalSubmission.executionTime,
+            bestScore: res.bestScore,
+            latestScore: res.latestScore,
+            submissionId: res.finalSubmission.id
+          };
+        }
       }
     }
 
@@ -915,7 +949,11 @@ class Database {
       return {
         ...u,
         totalScore: total,
-        problemsSolved: solved
+        officialScore: (!isPretest && !isVirtual) ? total : 0,
+        problemsSolved: solved,
+        isPretest,
+        isOfficial: !isPretest && !isVirtual,
+        scoringMode
       };
     });
 

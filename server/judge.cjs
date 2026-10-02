@@ -16,8 +16,8 @@ const DOCKER_IMAGE = 'gcc:13-bookworm';
 // Resource ceilings (Docker flags). These are upper bounds; per-problem limits
 // are enforced by the watchdog timer and output cap inside the container.
 // ---------------------------------------------------------------------------
-const DOCKER_MEMORY_BYTES = 256 * 1024 * 1024;  // 256 MiB hard ceiling
-const DOCKER_SWAP_BYTES = 256 * 1024 * 1024;    // swap = memory (disable extra swap)
+const DOCKER_MEMORY_BYTES = 5120 * 1024 * 1024; // 5120 MiB (5 GB) hard ceiling
+const DOCKER_SWAP_BYTES = 5120 * 1024 * 1024;   // swap = memory (disable extra swap)
 const DOCKER_CPU_QUOTA = 100000;                  // 1 CPU core (period=100000)
 const DOCKER_PIDS_LIMIT = 64;
 const OUTPUT_CAP_BYTES = 4 * 1024 * 1024;        // 4 MiB per test output cap

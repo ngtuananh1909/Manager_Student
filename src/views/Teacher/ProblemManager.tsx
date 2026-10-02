@@ -788,7 +788,7 @@ export const ProblemManager: React.FC = () => {
                           className="btn btn-outline btn-sm"
                           style={{ padding: '3px 7px', color: 'var(--accent-rose)' }}
                           onClick={() => setStatementModal({ title: prob.title, url: `${serverUrl}${prob.pdfUrl}`, fileName: prob.pdfFileName })}
-                          title="Xem đề PDF"
+                          title="Xem Problem"
                         >
                           <Eye size={13} />
                         </button>
@@ -1519,7 +1519,7 @@ export const ProblemManager: React.FC = () => {
                               border: `1px solid ${tc.isSample ? 'rgba(16, 185, 129, 0.3)' : 'rgba(100, 116, 139, 0.3)'}`
                             }}
                             onClick={() => handleUpdateTestCaseField(idx, 'isSample', !tc.isSample)}
-                            title="Bấm để chuyển đổi giữa Test Công Khai (học sinh xem được đề) và Test Ẩn (chấm điểm bí mật)"
+                            title="Bấm để chuyển đổi giữa Test Công Khai (học sinh xem được đề) và Test Ẩn (chấm điểm ẩn)"
                           >
                             {tc.isSample ? '⭐ Công Khai (Mẫu)' : '🔒 Test Ẩn'}
                           </button>
