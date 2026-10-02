@@ -16,7 +16,8 @@
     "start": "concurrently -k -p \"[{name}]\" -n \"SERVER,UI\" -c \"cyan,magenta\" \"node server/index.cjs\" \"vite preview\"",
     "test": "node --test tests/*.test.cjs",
     "typecheck": "tsc --noEmit",
-    "lint": "oxlint src server electron tests"
+    "lint": "oxlint src server electron tests",
+    "sign:update": "node scripts/sign-update.cjs"
   },
   "build": {
     "appId": "com.chaucaojudge.lan",
@@ -28,6 +29,7 @@
       "dist/**/*",
       "electron/**/*",
       "server/**/*",
+      "config/**/*",
       "package.json"
     ],
     "win": {
@@ -77,5 +79,8 @@
     "typescript": "^7.0.2",
     "vite": "^8.3.1",
     "wait-on": "^9.1.0"
+  },
+  "allowScripts": {
+    "argon2@0.45.1": true
   }
 }

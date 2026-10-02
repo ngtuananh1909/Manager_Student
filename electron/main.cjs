@@ -1,13 +1,28 @@
 const { app, BrowserWindow, ipcMain, dialog, shell } = require('electron');
 const path = require('path');
 const fs = require('fs');
+const crypto = require('crypto');
 const http = require('http');
+const { pathToFileURL } = require('url');
 const { spawn } = require('child_process');
 const lan = require('../server/lanDiscovery.cjs');
+const {
+  MAX_UPDATE_BYTES,
+  VerifiedUpdateState,
+  compareVersions,
+  isTrustedRendererUrl,
+  validateLanServerUrl,
+  verifyUpdateArtifact,
+  verifyUpdateManifest
+} = require('../server/updateSecurity.cjs');
 let serverModule = null;
 
 let mainWindow = null;
 let isServerRunning = false;
+let checkedUpdate = null;
+const verifiedUpdateState = new VerifiedUpdateState();
+const updatePublicKey = fs.readFileSync(path.join(__dirname, '..', 'config', 'update-public-key.pem'), 'utf8');
+const packagedEntryUrl = pathToFileURL(path.join(__dirname, '..', 'dist', 'index.html')).href;
 
 // Read app version from package.json
 function getAppVersion() {
@@ -49,9 +64,25 @@ function createWindow() {
     mainWindow.loadFile(path.join(__dirname, '../dist/index.html'));
   }
 
+  mainWindow.webContents.on('will-navigate', (event, targetUrl) => {
+    if (!isTrustedRendererUrl(targetUrl, { packaged: app.isPackaged, packagedEntryUrl })) event.preventDefault();
+  });
+  mainWindow.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
+
   mainWindow.on('closed', () => {
     mainWindow = null;
   });
+}
+
+function isTrustedIpcEvent(event) {
+  const senderUrl = event?.senderFrame?.url || event?.sender?.getURL?.() || '';
+  return isTrustedRendererUrl(senderUrl, { packaged: app.isPackaged, packagedEntryUrl });
+}
+
+function rejectUntrustedIpc(event) {
+  return !isTrustedIpcEvent(event)
+    ? { success: false, error: 'Nguồn IPC không được tin cậy.' }
+    : null;
 }
 
 function getConfigPath() {
@@ -92,18 +123,33 @@ function getUpdateTempDir() {
 // Check for update from the server
 async function checkForUpdate(serverUrl) {
   const currentVersion = getAppVersion();
-  const url = `${serverUrl}/api/update/check?version=${currentVersion}`;
+  const trustedServerUrl = validateLanServerUrl(serverUrl);
+  const url = `${trustedServerUrl}/api/update/check?version=${currentVersion}`;
 
   return new Promise((resolve, reject) => {
     const req = http.get(url, { timeout: 5000 }, (res) => {
       let data = '';
-      res.on('data', chunk => data += chunk);
+      res.on('data', chunk => {
+        data += chunk;
+        if (data.length > 64 * 1024) req.destroy(new Error('Phản hồi manifest quá lớn.'));
+      });
       res.on('end', () => {
         try {
           const result = JSON.parse(data);
+          if (res.statusCode !== 200) throw new Error(result.error || `HTTP ${res.statusCode}`);
+          if (result.updateAvailable) {
+            verifyUpdateManifest(result.manifest, updatePublicKey);
+            if (compareVersions(result.manifest.version, currentVersion) <= 0) {
+              throw new Error('Manifest không chứa phiên bản mới hơn.');
+            }
+            checkedUpdate = { serverUrl: trustedServerUrl, manifest: result.manifest };
+          } else {
+            checkedUpdate = null;
+            verifiedUpdateState.clear();
+          }
           resolve(result);
         } catch (e) {
-          reject(new Error('Phản hồi không hợp lệ từ máy chủ'));
+          reject(new Error(`Phản hồi cập nhật không hợp lệ: ${e.message}`));
         }
       });
     });
@@ -116,109 +162,127 @@ async function checkForUpdate(serverUrl) {
 }
 
 // Download update file with progress
-function downloadUpdate(serverUrl, destPath, onProgress) {
+function downloadUpdate(serverUrl, manifest, destPath, onProgress) {
+  const trustedServerUrl = validateLanServerUrl(serverUrl);
+  verifyUpdateManifest(manifest, updatePublicKey);
+  if (!checkedUpdate || checkedUpdate.serverUrl !== trustedServerUrl || checkedUpdate.manifest.signature !== manifest.signature) {
+    return Promise.reject(new Error('Bản cập nhật chưa được kiểm tra trong phiên hiện tại.'));
+  }
+  if (path.basename(destPath) !== manifest.fileName) {
+    return Promise.reject(new Error('Đường dẫn tải không khớp manifest.'));
+  }
+
   return new Promise((resolve, reject) => {
-    const url = `${serverUrl}/api/update/download`;
+    const url = `${trustedServerUrl}/api/update/download`;
+    const partialPath = `${destPath}.part`;
+    try { if (fs.existsSync(partialPath)) fs.unlinkSync(partialPath); } catch {}
+    const file = fs.createWriteStream(partialPath, { flags: 'wx' });
+    const hash = crypto.createHash('sha256');
+    let downloadedSize = 0;
+    let settled = false;
+
+    const failDownload = error => {
+      if (settled) return;
+      settled = true;
+      try { file.destroy(); } catch {}
+      try { if (fs.existsSync(partialPath)) fs.unlinkSync(partialPath); } catch {}
+      reject(error);
+    };
 
     const req = http.get(url, { timeout: 300000 }, (res) => {
       if (res.statusCode !== 200) {
-        reject(new Error(`Lỗi tải file: HTTP ${res.statusCode}`));
+        res.resume();
+        failDownload(new Error(`Lỗi tải file: HTTP ${res.statusCode}`));
         return;
       }
 
       const totalSize = parseInt(res.headers['content-length'], 10) || 0;
-      const updateVersion = res.headers['x-update-version'] || 'unknown';
-      let downloadedSize = 0;
-
-      const file = fs.createWriteStream(destPath);
+      if (totalSize !== manifest.size || totalSize <= 0 || totalSize > MAX_UPDATE_BYTES) {
+        res.destroy();
+        failDownload(new Error('Content-Length không khớp manifest.'));
+        return;
+      }
 
       res.on('data', (chunk) => {
         downloadedSize += chunk.length;
-        if (totalSize > 0 && onProgress) {
+        if (downloadedSize > manifest.size || downloadedSize > MAX_UPDATE_BYTES) {
+          res.destroy();
+          failDownload(new Error('File tải xuống vượt quá dung lượng manifest.'));
+          return;
+        }
+        hash.update(chunk);
+        file.write(chunk);
+        if (onProgress) {
           onProgress({
             percent: Math.round((downloadedSize / totalSize) * 100),
             downloadedMB: (downloadedSize / (1024 * 1024)).toFixed(1),
             totalMB: (totalSize / (1024 * 1024)).toFixed(1),
-            version: updateVersion
+            version: manifest.version
           });
         }
       });
-
-      res.pipe(file);
+      res.on('end', () => file.end());
+      res.on('error', failDownload);
 
       file.on('finish', () => {
-        file.close(() => {
-          resolve({ filePath: destPath, version: updateVersion, size: downloadedSize });
-        });
+        if (settled) return;
+        try {
+          if (downloadedSize !== manifest.size || hash.digest('hex') !== manifest.sha256) {
+            throw new Error('SHA-256 hoặc dung lượng file tải xuống không khớp manifest.');
+          }
+          if (fs.existsSync(destPath)) fs.unlinkSync(destPath);
+          fs.renameSync(partialPath, destPath);
+          verifyUpdateArtifact({ manifest, publicKey: updatePublicKey, installerPath: destPath, currentVersion: getAppVersion() });
+          verifiedUpdateState.markVerified(destPath, manifest);
+          settled = true;
+          resolve({ version: manifest.version, size: downloadedSize, verified: true });
+        } catch (error) {
+          failDownload(error);
+        }
       });
-
-      file.on('error', (err) => {
-        fs.unlink(destPath, () => {});
-        reject(err);
-      });
+      file.on('error', failDownload);
     });
 
-    req.on('error', reject);
+    req.on('error', failDownload);
     req.on('timeout', () => {
-      req.destroy();
-      reject(new Error('Hết thời gian tải file'));
+      req.destroy(new Error('Hết thời gian tải file'));
     });
   });
 }
 
 // Install update (run the NSIS installer silently, relaunch app, and quit)
 function installUpdate(installerPath) {
-  const currentExe = process.execPath;
-  const tempDir = getUpdateTempDir();
-  const scriptPath = path.join(tempDir, 'run_update.bat');
-
-  // NSIS /S silent install script that restarts the newly installed app
-  const batchScript = `@echo off
-chcp 65001 >nul
-echo [SchoolJudge Update] Waiting for old process to exit...
-timeout /t 2 /nobreak >nul
-echo [SchoolJudge Update] Installing update silently...
-start /wait "" "${installerPath}" /S
-echo [SchoolJudge Update] Launching updated application...
-timeout /t 1 /nobreak >nul
-start "" "${currentExe}"
-exit
-`;
-
-  try {
-    fs.writeFileSync(scriptPath, batchScript, 'utf8');
-    const child = spawn('cmd.exe', ['/c', scriptPath], {
-      detached: true,
-      stdio: 'ignore'
-    });
-    child.unref();
-    setTimeout(() => {
-      app.quit();
-    }, 500);
-  } catch (err) {
-    console.error('Failed to run update batch script, falling back to direct installer spawn:', err);
-    const child = spawn(installerPath, ['/S'], {
-      detached: true,
-      stdio: 'ignore'
-    });
-    child.unref();
-    setTimeout(() => {
-      app.quit();
-    }, 1000);
-  }
+  if (process.platform !== 'win32') throw new Error('Cài đặt tự động chỉ hỗ trợ Windows.');
+  const child = spawn(installerPath, ['/S'], {
+    detached: true,
+    stdio: 'ignore',
+    windowsHide: true,
+    shell: false
+  });
+  child.unref();
+  setTimeout(() => app.quit(), 500);
 }
 
 
 // IPC Handlers
-ipcMain.handle('get-local-ips', async () => {
+ipcMain.handle('get-local-ips', async (event) => {
+  const rejection = rejectUntrustedIpc(event);
+  if (rejection) return rejection;
   return lan.getLocalIPs();
 });
 
-ipcMain.handle('get-app-role', async () => {
+ipcMain.handle('get-app-role', async (event) => {
+  const rejection = rejectUntrustedIpc(event);
+  if (rejection) return null;
   return getSavedRole();
 });
 
 ipcMain.handle('set-app-role', async (event, role) => {
+  const rejection = rejectUntrustedIpc(event);
+  if (rejection) return rejection;
+  if (role !== 'host' && role !== 'student') {
+    return { success: false, error: 'Vai trò thiết bị không hợp lệ.' };
+  }
   saveAppRole(role);
   if (role === 'host' && !isServerRunning) {
     try {
@@ -239,6 +303,11 @@ ipcMain.handle('set-app-role', async (event, role) => {
 });
 
 ipcMain.handle('start-host-server', async (event, port = 4000) => {
+  const rejection = rejectUntrustedIpc(event);
+  if (rejection) return rejection;
+  if (!Number.isInteger(port) || port !== 4000) {
+    return { success: false, error: 'Chỉ hỗ trợ cổng máy chủ 4000.' };
+  }
   if (isServerRunning) return { success: true, message: 'Server already running' };
   try {
     serverModule = require('../server/index.cjs');
@@ -250,7 +319,9 @@ ipcMain.handle('start-host-server', async (event, port = 4000) => {
   }
 });
 
-ipcMain.handle('stop-host-server', async () => {
+ipcMain.handle('stop-host-server', async (event) => {
+  const rejection = rejectUntrustedIpc(event);
+  if (rejection) return rejection;
   if (serverModule && serverModule.server) {
     serverModule.server.close();
     lan.stopHostBeacon();
@@ -259,7 +330,9 @@ ipcMain.handle('stop-host-server', async () => {
   return { success: true };
 });
 
-ipcMain.handle('start-discovery', async () => {
+ipcMain.handle('start-discovery', async (event) => {
+  const rejection = rejectUntrustedIpc(event);
+  if (rejection) return rejection;
   lan.startDiscoveryListener((serverInfo) => {
     if (mainWindow && !mainWindow.isDestroyed()) {
       mainWindow.webContents.send('server-discovered', serverInfo);
@@ -272,12 +345,18 @@ ipcMain.handle('start-discovery', async () => {
 // AUTO-UPDATE IPC Handlers
 // ========================================
 
-ipcMain.handle('update:get-version', async () => {
+ipcMain.handle('update:get-version', async (event) => {
+  const rejection = rejectUntrustedIpc(event);
+  if (rejection) return '';
   return getAppVersion();
 });
 
 ipcMain.handle('update:check', async (event, serverUrl) => {
+  const rejection = rejectUntrustedIpc(event);
+  if (rejection) return rejection;
   try {
+    verifiedUpdateState.clear();
+    checkedUpdate = null;
     const result = await checkForUpdate(serverUrl);
     return { success: true, ...result };
   } catch (err) {
@@ -286,16 +365,22 @@ ipcMain.handle('update:check', async (event, serverUrl) => {
 });
 
 ipcMain.handle('update:download', async (event, serverUrl) => {
+  const rejection = rejectUntrustedIpc(event);
+  if (rejection) return rejection;
   try {
+    const trustedServerUrl = validateLanServerUrl(serverUrl);
+    if (!checkedUpdate || checkedUpdate.serverUrl !== trustedServerUrl) {
+      return { success: false, error: 'Hãy kiểm tra bản cập nhật trước khi tải.' };
+    }
     const tempDir = getUpdateTempDir();
-    const destPath = path.join(tempDir, 'SchoolJudge_Update.exe');
+    const destPath = path.join(tempDir, checkedUpdate.manifest.fileName);
 
     // Clean up previous download if exists
     if (fs.existsSync(destPath)) {
       fs.unlinkSync(destPath);
     }
 
-    const result = await downloadUpdate(serverUrl, destPath, (progress) => {
+    const result = await downloadUpdate(trustedServerUrl, checkedUpdate.manifest, destPath, (progress) => {
       if (mainWindow && !mainWindow.isDestroyed()) {
         mainWindow.webContents.send('update:download-progress', progress);
       }
@@ -307,19 +392,28 @@ ipcMain.handle('update:download', async (event, serverUrl) => {
   }
 });
 
-ipcMain.handle('update:install', async (event, filePath) => {
+ipcMain.handle('update:install', async (event) => {
+  const rejection = rejectUntrustedIpc(event);
+  if (rejection) return rejection;
   try {
-    if (!filePath || !fs.existsSync(filePath)) {
-      return { success: false, error: 'File cài đặt không tồn tại trên hệ thống.' };
-    }
-    installUpdate(filePath);
+    const verified = verifiedUpdateState.consume();
+    verifyUpdateArtifact({
+      manifest: verified.manifest,
+      publicKey: updatePublicKey,
+      installerPath: verified.installerPath,
+      currentVersion: getAppVersion()
+    });
+    installUpdate(verified.installerPath);
     return { success: true };
   } catch (err) {
     return { success: false, error: err.message };
   }
 });
 
-ipcMain.handle('update:open-folder', async () => {
+ipcMain.handle('update:open-folder', async (event) => {
+  const rejection = rejectUntrustedIpc(event);
+  if (rejection) return rejection;
+  if (getSavedRole() !== 'host') return { success: false, error: 'Chỉ máy Host được mở thư mục cập nhật.' };
   try {
     const appDataDir = process.env.APPDATA || process.env.HOME || process.cwd();
     const dir = path.join(appDataDir, 'SchoolJudge LAN', 'updates');
@@ -333,22 +427,36 @@ ipcMain.handle('update:open-folder', async () => {
   }
 });
 
-ipcMain.handle('update:publish-file', async () => {
+ipcMain.handle('update:publish-file', async (event) => {
+  const rejection = rejectUntrustedIpc(event);
+  if (rejection) return rejection;
+  if (getSavedRole() !== 'host') return { success: false, error: 'Chỉ máy Host được phát hành cập nhật.' };
   try {
     const result = await dialog.showOpenDialog(mainWindow, {
-      title: 'Chọn file cài đặt mới (.exe) để phát hành qua mạng LAN',
+      title: 'Chọn installer .exe và update-manifest.json đã ký',
       filters: [
-        { name: 'Bộ cài đặt SchoolJudge LAN (*.exe)', extensions: ['exe'] }
+        { name: 'Gói cập nhật đã ký', extensions: ['exe', 'json'] }
       ],
-      properties: ['openFile']
+      properties: ['openFile', 'multiSelections']
     });
 
     if (result.canceled || !result.filePaths || result.filePaths.length === 0) {
       return { canceled: true };
     }
 
-    const sourcePath = result.filePaths[0];
-    const fileName = path.basename(sourcePath);
+    const installerSource = result.filePaths.find(file => path.extname(file).toLowerCase() === '.exe');
+    const manifestSource = result.filePaths.find(file => path.extname(file).toLowerCase() === '.json');
+    if (!installerSource || !manifestSource) {
+      return { success: false, error: 'Phải chọn đúng một installer .exe và một manifest .json.' };
+    }
+    const manifest = JSON.parse(fs.readFileSync(manifestSource, 'utf8'));
+    verifyUpdateArtifact({
+      manifest,
+      publicKey: updatePublicKey,
+      installerPath: installerSource,
+      currentVersion: '0.0.0'
+    });
+
     const appDataDir = process.env.APPDATA || process.env.HOME || process.cwd();
     const targetDir = path.join(appDataDir, 'SchoolJudge LAN', 'updates');
 
@@ -356,18 +464,22 @@ ipcMain.handle('update:publish-file', async () => {
       fs.mkdirSync(targetDir, { recursive: true });
     }
 
-    const targetPath = path.join(targetDir, fileName);
-    fs.copyFileSync(sourcePath, targetPath);
-
-    const stat = fs.statSync(targetPath);
-    const versionMatch = fileName.match(/(\d+\.\d+\.\d+)/);
+    const targetPath = path.join(targetDir, manifest.fileName);
+    const installerTempPath = `${targetPath}.tmp`;
+    const manifestPath = path.join(targetDir, 'update-manifest.json');
+    const manifestTempPath = `${manifestPath}.tmp`;
+    fs.copyFileSync(installerSource, installerTempPath);
+    fs.writeFileSync(manifestTempPath, `${JSON.stringify(manifest, null, 2)}\n`, 'utf8');
+    fs.renameSync(installerTempPath, targetPath);
+    fs.renameSync(manifestTempPath, manifestPath);
+    verifyUpdateArtifact({ manifest, publicKey: updatePublicKey, installerPath: targetPath, currentVersion: '0.0.0' });
 
     return {
       success: true,
-      fileName,
-      sizeMB: (stat.size / (1024 * 1024)).toFixed(1),
-      version: versionMatch ? versionMatch[1] : null,
-      targetPath
+      fileName: manifest.fileName,
+      sizeMB: (manifest.size / (1024 * 1024)).toFixed(1),
+      version: manifest.version,
+      signed: true
     };
   } catch (err) {
     return { success: false, error: err.message };

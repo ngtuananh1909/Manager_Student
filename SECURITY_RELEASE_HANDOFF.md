@@ -4,14 +4,18 @@
 
 ## 1. Resume Here
 
-- **Active repo:** `/home/tuananh/Documents/Manager_Student` (worktree merged to `main`; worktree at `/home/tuananh/.codex/worktrees/security-release/Manager_Student` is now stale).
-- **Git state:** `main` branch, clean working tree.
+- **Active repo:** `/home/tuananh/Documents/Manager_Student` (this is now the canonical implementation folder).
+- **Stale worktree:** `/home/tuananh/.codex/worktrees/security-release/Manager_Student`. Do not copy/cherry-pick from it: `main` already contains Task 4 and is newer.
+- **Git state:** `main` branch. The working tree currently has an uncommitted `package.json` change adding `allowScripts.argon2@0.45.1=true`; preserve and inspect it before deciding whether it belongs in the next commit.
 - **Plan:** `docs/superpowers/plans/2026-10-01-manager-student-security-release.md`
 - **Detailed state file:** this file.
 - **Current task:** Task 5 — Signed updater and Electron hardening.
 - **Current status:** `NOT STARTED`
-- **Last committed HEAD:** `3aa8c69 feat: Docker-only judge — remove simulateRun and native host execution`
-- **Uncommitted files at handoff creation:** none
+- **Last committed HEAD:** `c8c3126 docs: update handoff — Task 4 complete, Task 5 next`
+- **Uncommitted file before this process update:** `package.json` only (`allowScripts` entry for Argon2).
+- **Current uncommitted documentation after this update:** modified `SECURITY_RELEASE_HANDOFF.md`; new `SECURITY_RELEASE_PROCESS.md` and `CONTINUE_SECURITY_RELEASE_PROMPT.md`. These files intentionally document the live state and should be included in the next documentation/process commit without accidentally staging unrelated runtime data.
+- **Live dashboard:** `SECURITY_RELEASE_PROCESS.md`
+- **Copy-paste continuation prompt:** `CONTINUE_SECURITY_RELEASE_PROMPT.md`
 
 ### Safe resume commands
 
@@ -19,12 +23,13 @@
 cd /home/tuananh/Documents/Manager_Student
 git status --short
 git log --oneline -n 6
-sed -n '1,100p' SECURITY_RELEASE_HANDOFF.md
+sed -n '1,220p' SECURITY_RELEASE_PROCESS.md
+sed -n '1,120p' SECURITY_RELEASE_HANDOFF.md
 npm test
 npm run typecheck
 ```
 
-`npm test` may need elevated sandbox permission because Node tests spawn child processes in this managed worktree. Do not install or edit dependencies in the original checkout.
+Start directly from the current task and target files. Do not re-scan or re-audit completed Tasks 1–4.
 
 ## 2. Non-Negotiable Approved Decisions
 
@@ -125,7 +130,7 @@ npm run typecheck
 
 **Important follow-ups not yet resolved:**
 
-- Direct `<a href>` downloads in contest/statistics screens do not attach bearer headers. `StatementViewer` is fixed, but export/download buttons need an authenticated-download helper.
+- Authenticated document/report downloads were completed in Task 3; do not reimplement them.
 - Existing user-management forms still display password input/default fields even though the server generates random credentials; remove misleading UI in Task 8.
 - `server/index.cjs` still has broad request limits, wildcard CORS and mass-assignment until Task 6.
 
@@ -181,7 +186,7 @@ npm run typecheck
 
 ## 6. Tasks Not Started
 
-## 5b. Task 4 — Docker-only judge
+### Task 4 — Docker-only judge
 
 **Status:** `COMPLETE`
 

@@ -8,6 +8,7 @@ const { Server } = require('socket.io');
 const db = require('./db.cjs');
 const { AuthError, createAuthService, hashPassword, safeUser } = require('./auth.cjs');
 const { ContestPolicyError, assertJoinAllowed, assertSubmissionAllowed } = require('./contestPolicy.cjs');
+const { compareVersions, verifyUpdateArtifact } = require('./updateSecurity.cjs');
 const {
   sanitizeContestForHost,
   sanitizeContestForStudent,
@@ -1905,53 +1906,26 @@ function getUpdatesDir() {
   return dir;
 }
 
-function findLatestInstaller() {
+function findLatestSignedUpdate() {
   const updatesDir = getUpdatesDir();
+  const manifestPath = path.join(updatesDir, 'update-manifest.json');
   try {
-    const files = fs.readdirSync(updatesDir)
-      .filter(f => f.endsWith('.exe'))
-      .map(f => {
-        const stat = fs.statSync(path.join(updatesDir, f));
-        // Try to extract version from filename like "SchoolJudge LAN_Setup_1.0.9.exe"
-        const versionMatch = f.match(/(\d+\.\d+\.\d+)/);
-        return {
-          fileName: f,
-          filePath: path.join(updatesDir, f),
-          size: stat.size,
-          version: versionMatch ? versionMatch[1] : null,
-          mtime: stat.mtime
-        };
-      })
-      .filter(f => f.version)
-      .sort((a, b) => {
-        // Sort by semantic version descending
-        const va = a.version.split('.').map(Number);
-        const vb = b.version.split('.').map(Number);
-        for (let i = 0; i < 3; i++) {
-          if ((va[i] || 0) !== (vb[i] || 0)) return (vb[i] || 0) - (va[i] || 0);
-        }
-        return b.mtime - a.mtime;
-      });
-    return files.length > 0 ? files[0] : null;
-  } catch (e) {
+    if (!fs.existsSync(manifestPath)) return null;
+    const manifest = JSON.parse(fs.readFileSync(manifestPath, 'utf8'));
+    const installerPath = path.join(updatesDir, manifest.fileName || '');
+    const publicKey = fs.readFileSync(path.join(__dirname, '..', 'config', 'update-public-key.pem'), 'utf8');
+    verifyUpdateArtifact({ manifest, publicKey, installerPath, currentVersion: '0.0.0' });
+    return { manifest, installerPath, manifestPath };
+  } catch (error) {
+    console.error('[Auto-Update] Ignoring invalid signed update:', error.code || error.message);
     return null;
   }
-}
-
-function compareVersions(v1, v2) {
-  const a = (v1 || '0.0.0').split('.').map(Number);
-  const b = (v2 || '0.0.0').split('.').map(Number);
-  for (let i = 0; i < 3; i++) {
-    if ((a[i] || 0) > (b[i] || 0)) return 1;
-    if ((a[i] || 0) < (b[i] || 0)) return -1;
-  }
-  return 0;
 }
 
 // Check for updates - called by Student machines
 app.get('/api/update/check', (req, res) => {
   const clientVersion = req.query.version || '0.0.0';
-  const latest = findLatestInstaller();
+  const latest = findLatestSignedUpdate();
 
   if (!latest) {
     return res.json({
@@ -1962,25 +1936,31 @@ app.get('/api/update/check', (req, res) => {
     });
   }
 
-  const isNewer = compareVersions(latest.version, clientVersion) > 0;
+  let isNewer;
+  try {
+    isNewer = compareVersions(latest.manifest.version, clientVersion) > 0;
+  } catch (error) {
+    return res.status(400).json({ code: error.code || 'INVALID_UPDATE_VERSION', error: error.message });
+  }
 
   res.json({
     updateAvailable: isNewer,
     currentVersion: APP_VERSION,
-    latestVersion: latest.version,
+    latestVersion: latest.manifest.version,
     clientVersion,
-    fileName: latest.fileName,
-    fileSize: latest.size,
-    fileSizeMB: (latest.size / (1024 * 1024)).toFixed(1),
+    fileName: latest.manifest.fileName,
+    fileSize: latest.manifest.size,
+    fileSizeMB: (latest.manifest.size / (1024 * 1024)).toFixed(1),
+    manifest: latest.manifest,
     message: isNewer
-      ? `Có bản cập nhật mới: v${latest.version}`
+      ? `Có bản cập nhật mới: v${latest.manifest.version}`
       : 'Phần mềm đã là phiên bản mới nhất.'
   });
 });
 
 // Get update info
 app.get('/api/update/info', requireHost, (req, res) => {
-  const latest = findLatestInstaller();
+  const latest = findLatestSignedUpdate();
   const updatesDir = getUpdatesDir();
 
   // Try to read release notes if exists
@@ -1995,10 +1975,11 @@ app.get('/api/update/info', requireHost, (req, res) => {
   res.json({
     serverVersion: APP_VERSION,
     latestInstaller: latest ? {
-      version: latest.version,
-      fileName: latest.fileName,
-      fileSize: latest.size,
-      fileSizeMB: (latest.size / (1024 * 1024)).toFixed(1)
+      version: latest.manifest.version,
+      fileName: latest.manifest.fileName,
+      fileSize: latest.manifest.size,
+      fileSizeMB: (latest.manifest.size / (1024 * 1024)).toFixed(1),
+      signed: true
     } : null,
     releaseNotes,
     updatesDir
@@ -2007,24 +1988,24 @@ app.get('/api/update/info', requireHost, (req, res) => {
 
 // Download the installer file
 app.get('/api/update/download', (req, res) => {
-  const latest = findLatestInstaller();
+  const latest = findLatestSignedUpdate();
 
   if (!latest) {
     return res.status(404).json({ error: 'Không tìm thấy file cập nhật trên máy chủ.' });
   }
 
-  if (!fs.existsSync(latest.filePath)) {
+  if (!fs.existsSync(latest.installerPath)) {
     return res.status(404).json({ error: 'File cập nhật không tồn tại.' });
   }
 
-  console.log(`[Auto-Update] Serving installer: ${latest.fileName} (${(latest.size / (1024 * 1024)).toFixed(1)} MB) to ${req.ip}`);
+  console.log(`[Auto-Update] Serving signed installer: ${latest.manifest.fileName} (${(latest.manifest.size / (1024 * 1024)).toFixed(1)} MB) to ${req.ip}`);
 
   res.setHeader('Content-Type', 'application/octet-stream');
-  res.setHeader('Content-Disposition', `attachment; filename="${latest.fileName}"`);
-  res.setHeader('Content-Length', latest.size);
-  res.setHeader('X-Update-Version', latest.version);
+  res.setHeader('Content-Disposition', `attachment; filename="${latest.manifest.fileName}"`);
+  res.setHeader('Content-Length', latest.manifest.size);
+  res.setHeader('X-Update-Version', latest.manifest.version);
 
-  const stream = fs.createReadStream(latest.filePath);
+  const stream = fs.createReadStream(latest.installerPath);
   stream.pipe(res);
   stream.on('error', (err) => {
     console.error('[Auto-Update] Stream error:', err);
@@ -2036,16 +2017,17 @@ app.get('/api/update/download', (req, res) => {
 
 // Broadcast update notification to all connected students via Socket.IO
 app.post('/api/update/broadcast', requireHost, (req, res) => {
-  const latest = findLatestInstaller();
+  const latest = findLatestSignedUpdate();
   if (latest) {
     io.emit('system:update_available', {
-      version: latest.version,
-      fileName: latest.fileName,
-      fileSize: latest.size,
-      fileSizeMB: (latest.size / (1024 * 1024)).toFixed(1)
+      version: latest.manifest.version,
+      fileName: latest.manifest.fileName,
+      fileSize: latest.manifest.size,
+      fileSizeMB: (latest.manifest.size / (1024 * 1024)).toFixed(1),
+      signed: true
     });
-    console.log(`[Auto-Update] Broadcasted new update v${latest.version} to all clients`);
-    return res.json({ success: true, broadcasted: true, latest });
+    console.log(`[Auto-Update] Broadcasted signed update v${latest.manifest.version} to all clients`);
+    return res.json({ success: true, broadcasted: true, latest: latest.manifest });
   }
   res.json({ success: false, message: 'Chưa có file cập nhật nào trong thư mục updates.' });
 });
