@@ -511,16 +511,14 @@ app.whenReady().then(() => {
   const cspPolicy = [
     "default-src 'self'",
     isDev
-      ? "script-src 'self' http://localhost:5173 http://127.0.0.1:5173"
+      ? "script-src 'self' 'unsafe-inline' http://localhost:5173 http://127.0.0.1:5173"
       : "script-src 'self'",
     isDev
-      ? "style-src 'self' 'unsafe-inline' http://localhost:5173 http://127.0.0.1:5173"
-      : "style-src 'self' 'unsafe-inline'",
-    isDev
-      ? "connect-src 'self' http://localhost:* http://127.0.0.1:* ws://localhost:* ws://127.0.0.1:*"
-      : "connect-src 'self' http://localhost:4000 http://127.0.0.1:4000 http://10.0.0.0/8:4000 http://172.16.0.0/12:4000 http://192.168.0.0/16:4000 ws://localhost:4000 ws://127.0.0.1:4000",
+      ? "style-src 'self' 'unsafe-inline' http://localhost:5173 http://127.0.0.1:5173 https://fonts.googleapis.com"
+      : "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
+    "connect-src 'self' http://localhost:* http://127.0.0.1:* ws://localhost:* ws://127.0.0.1:* http://*:4000 ws://*:4000",
     "img-src 'self' data: blob:",
-    "font-src 'self' data:",
+    "font-src 'self' data: https://fonts.gstatic.com",
     "object-src 'none'",
     "frame-src 'none'",
     "base-uri 'self'"
