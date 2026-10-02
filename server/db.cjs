@@ -37,7 +37,7 @@ if (DATA_DIR !== process.cwd() && !fs.existsSync(DATA_FILE)) {
 // Empty initial database template (Completely blank as required)
 const BLANK_DATA = {
   settings: {
-    serverName: "SchoolJudge LAN - Máy Chủ Chấm Bài C++",
+    serverName: "ChauCaoJudge LAN - Máy Chủ Chấm Bài C++",
     port: 4000,
     compilerPath: "g++",
     useDocker: false,
@@ -407,13 +407,18 @@ class Database {
   getUser(id) { return this.data.users.find(u => u.id === id || u.username === id); }
   
   createUser(user) {
+    const classes = Array.isArray(user.classes) && user.classes.length > 0
+      ? user.classes
+      : (user.classId ? [user.classId] : [this.data.classes[0]?.id || "cls-1"]);
+
     const newUser = {
       id: "usr-" + Date.now(),
       username: user.username.trim().toLowerCase(),
       passwordHash: this.hashPassword(user.password || '123456'),
       fullName: user.fullName || user.username,
       role: user.role || "user",
-      classId: user.classId || (this.data.classes[0]?.id || "cls-1"),
+      classId: classes[0] || (this.data.classes[0]?.id || "cls-1"),
+      classes: classes,
       streak: 1,
       badges: [],
       isLocked: false,
@@ -439,6 +444,12 @@ class Database {
     if (user) {
       if (updates.fullName) user.fullName = updates.fullName.trim();
       if (updates.classId) user.classId = updates.classId;
+      if (updates.classes && Array.isArray(updates.classes)) {
+        user.classes = updates.classes;
+        if (!user.classId && updates.classes.length > 0) user.classId = updates.classes[0];
+      } else if (updates.classId && (!user.classes || user.classes.length === 0)) {
+        user.classes = [updates.classId];
+      }
       if (updates.isLocked !== undefined) user.isLocked = !!updates.isLocked;
       this.save();
       return user;
@@ -481,9 +492,12 @@ class Database {
   // Classes
   getClasses() { return this.data.classes; }
   createClass(cls) {
+    const name = cls.name.trim();
+    const autoGrade = parseInt(name.match(/\d+/)?.[0] || '0', 10) || null;
     const newClass = {
       id: "cls-" + Date.now(),
-      name: cls.name.trim(),
+      name,
+      grade: cls.grade !== undefined && cls.grade !== null && cls.grade !== '' ? Number(cls.grade) : autoGrade,
       teacher: cls.teacher || "Giáo viên",
       joinCode: (cls.joinCode || Math.random().toString(36).substring(2, 8)).toUpperCase()
     };
@@ -617,13 +631,36 @@ class Database {
 
   createContest(contest) {
     if (!this.data.contests) this.data.contests = [];
+    const targetClasses = Array.isArray(contest.targetClasses) 
+      ? contest.targetClasses 
+      : (Array.isArray(contest.classIds) ? contest.classIds : []);
+    const targetStudents = Array.isArray(contest.targetStudents) 
+      ? contest.targetStudents 
+      : (Array.isArray(contest.candidateIds) ? contest.candidateIds : []);
+    const targetGrades = Array.isArray(contest.targetGrades) 
+      ? contest.targetGrades.map(Number) 
+      : [];
+
+    let scopeType = contest.scopeType || 'ALL';
+    if (!contest.scopeType) {
+      if (targetStudents.length > 0) scopeType = 'STUDENT';
+      else if (targetGrades.length > 0) scopeType = 'GRADE';
+      else if (targetClasses.length > 0) scopeType = 'CLASS';
+      else scopeType = 'ALL';
+    }
+
     const newContest = {
       id: "cnt-" + Date.now(),
       title: String(contest.title || "").trim(),
       description: String(contest.description || ""),
       mode: contest.mode || "offline", // "offline" = Mạng LAN phòng máy; "online" = Trực tuyến qua Internet
+      scopeType,
+      targetGrades,
+      targetClasses,
+      targetStudents,
       totalScore: Number(contest.totalScore) || 100, // Tổng điểm toàn kỳ thi (mặc định 100)
-      classIds: Array.isArray(contest.classIds) ? contest.classIds : [], // Array of class IDs allowed to take contest ([] = all)
+      classIds: targetClasses, // Giữ đồng bộ cho backward compatibility
+      candidateIds: targetStudents, // Giữ đồng bộ cho backward compatibility
       problemIds: Array.isArray(contest.problemIds) ? contest.problemIds : [], // Array of problem IDs in contest
       pdfUrl: contest.pdfUrl || "",
       pdfFileName: contest.pdfFileName || "",
@@ -653,15 +690,81 @@ class Database {
     if (!this.data.contests) this.data.contests = [];
     const idx = this.data.contests.findIndex(c => c.id === id);
     if (idx !== -1) {
-      this.data.contests[idx] = { 
-        ...this.data.contests[idx], 
-        ...updates,
-        totalScore: updates.totalScore !== undefined ? Number(updates.totalScore) : (this.data.contests[idx].totalScore || 100)
-      };
+      const merged = { ...this.data.contests[idx], ...updates };
+      if (updates.targetClasses !== undefined) {
+        merged.classIds = updates.targetClasses;
+      } else if (updates.classIds !== undefined && updates.targetClasses === undefined) {
+        merged.targetClasses = updates.classIds;
+      }
+      if (updates.targetStudents !== undefined) {
+        merged.candidateIds = updates.targetStudents;
+      } else if (updates.candidateIds !== undefined && updates.targetStudents === undefined) {
+        merged.targetStudents = updates.candidateIds;
+      }
+      if (updates.targetGrades !== undefined) {
+        merged.targetGrades = Array.isArray(updates.targetGrades) ? updates.targetGrades.map(Number) : [];
+      }
+      if (updates.totalScore !== undefined) {
+        merged.totalScore = Number(updates.totalScore);
+      }
+      this.data.contests[idx] = merged;
       this.flushSync();
       return this.data.contests[idx];
     }
     return null;
+  }
+
+  isStudentEligible(student, contest) {
+    if (!student || !contest) return false;
+    if (student.role === 'host') return true;
+
+    const scopeType = (contest.scopeType || '').toUpperCase();
+    const studentClasses = Array.isArray(student.classes) && student.classes.length > 0
+      ? student.classes
+      : (student.classId ? [student.classId] : []);
+
+    if (!scopeType || scopeType === 'ALL') {
+      if (Array.isArray(contest.candidateIds) && contest.candidateIds.length > 0) {
+        return contest.candidateIds.includes(student.id);
+      }
+      if (Array.isArray(contest.classIds) && contest.classIds.length > 0) {
+        return studentClasses.some(cId => contest.classIds.includes(cId));
+      }
+      return true;
+    }
+
+    if (scopeType === 'GRADE') {
+      const targetGrades = Array.isArray(contest.targetGrades)
+        ? contest.targetGrades.map(Number)
+        : (contest.targetGrade ? [Number(contest.targetGrade)] : []);
+      if (targetGrades.length === 0) return true;
+
+      const allClasses = this.getClasses() || [];
+      return studentClasses.some(cId => {
+        const cls = allClasses.find(c => c.id === cId || c.name === cId);
+        const grade = cls && cls.grade !== undefined && cls.grade !== null 
+          ? Number(cls.grade) 
+          : parseInt(String(cls ? cls.name : cId).match(/\d+/)?.[0] || '0', 10);
+        return targetGrades.includes(grade);
+      });
+    }
+
+    if (scopeType === 'CLASS') {
+      const targetClasses = (Array.isArray(contest.targetClasses) && contest.targetClasses.length > 0)
+        ? contest.targetClasses
+        : (contest.classIds || []);
+      if (targetClasses.length === 0) return true;
+      return studentClasses.some(cId => targetClasses.includes(cId));
+    }
+
+    if (scopeType === 'STUDENT') {
+      const targetStudents = (Array.isArray(contest.targetStudents) && contest.targetStudents.length > 0)
+        ? contest.targetStudents
+        : (contest.candidateIds || []);
+      return targetStudents.includes(student.id);
+    }
+
+    return true;
   }
 
   deleteContest(id) {

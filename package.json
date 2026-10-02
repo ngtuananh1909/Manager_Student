@@ -1,6 +1,6 @@
 {
   "name": "chaucaojudge",
-  "version": "1.2.0",
+  "version": "1.2.4",
   "description": "ChauCaoJudge - C++ Online Judge Trường Học",
   "main": "electron/main.cjs",
   "scripts": {

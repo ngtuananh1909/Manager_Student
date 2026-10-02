@@ -359,66 +359,52 @@ export const ProblemDetail: React.FC<Props> = ({
   const samples = problem.samples || [];
 
   return (
-    <div style={{ flex: 1, display: 'flex', flexDirection: 'column', height: 'calc(100vh - 60px)', overflow: 'hidden', background: 'var(--bg-app)' }}>
-      {/* 1. TOP HEADER & CONTEST NAVIGATION BAR */}
+    <div style={{ flex: 1, display: 'flex', flexDirection: 'column', height: '100%', overflow: 'hidden', background: 'var(--bg-app)' }}>
+      {/* 1. TOP HEADER & CONTEST NAVIGATION BAR (40px) */}
       <div style={{ 
-        minHeight: '50px', 
+        height: '40px',
+        minHeight: '40px', 
         background: 'var(--bg-surface)', 
         borderBottom: '1px solid var(--border-subtle)',
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'space-between',
-        padding: '0 16px',
-        flexWrap: 'wrap',
+        padding: '0 12px',
         gap: '8px',
         zIndex: 10
       }}>
         {/* Left: Back & Problem Switcher Tabs */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', overflow: 'hidden' }}>
           <button 
+            type="button"
             className="btn btn-outline btn-sm" 
             onClick={onBack}
-            style={{ fontSize: '0.8rem', padding: '5px 10px', display: 'flex', alignItems: 'center', gap: '4px' }}
+            style={{ fontSize: '0.76rem', padding: '3px 8px', display: 'inline-flex', alignItems: 'center', gap: '4px' }}
           >
-            <ChevronLeft size={16} /> Quay lại
+            <ChevronLeft size={14} /> Quay lại
           </button>
 
           {contestTitle && (
-            <span style={{ fontSize: '0.82rem', fontWeight: 600, color: 'var(--text-muted)' }}>
-              {contestTitle}
+            <span style={{ fontSize: '0.78rem', fontWeight: 600, color: 'var(--text-muted)', whiteSpace: 'nowrap' }}>
+              [{contestTitle}]
             </span>
           )}
 
           {/* Quick Problem Switcher Tabs if in a Contest */}
           {contestProblems.length > 0 && (
-            <div style={{ display: 'flex', alignItems: 'center', gap: '6px', background: 'var(--bg-app)', padding: '3px 6px', borderRadius: '6px', border: '1px solid var(--border-subtle)' }}>
-              <span style={{ fontSize: '0.72rem', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', padding: '0 4px' }}>
-                Danh sách bài:
-              </span>
+            <div className="linear-tabs">
               {contestProblems.map((cp, idx) => {
                 const isActive = cp.id === problem.id;
                 return (
                   <button
                     key={cp.id}
                     type="button"
+                    className={`linear-tab-btn ${isActive ? 'active' : ''}`}
                     onClick={() => onSelectProblem && onSelectProblem(cp)}
-                    style={{
-                      padding: '3px 9px',
-                      borderRadius: '4px',
-                      fontSize: '0.78rem',
-                      fontWeight: isActive ? 700 : 500,
-                      background: isActive ? 'var(--primary)' : 'transparent',
-                      color: isActive ? '#fff' : 'var(--text-secondary)',
-                      border: 'none',
-                      cursor: 'pointer',
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: '4px',
-                      transition: 'all 0.15s ease'
-                    }}
+                    style={{ padding: '2px 8px', fontSize: '0.74rem' }}
                   >
                     <span>Bài {idx + 1}: {cp.code}</span>
-                    <span style={{ fontSize: '0.7rem', opacity: 0.85 }}>({cp.points || 0}đ)</span>
+                    <span style={{ fontSize: '0.68rem', opacity: 0.8 }}>({cp.points || 0}đ)</span>
                   </button>
                 );
               })}
@@ -427,38 +413,36 @@ export const ProblemDetail: React.FC<Props> = ({
         </div>
 
         {/* Right: Presets, Auto-save status, Timer & Run / Submit Action Buttons */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
           {/* Quick Layout Presets */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: '3px', background: 'var(--bg-app)', padding: '2px 6px', borderRadius: '6px', border: '1px solid var(--border-subtle)' }} title="Tỉ lệ chia màn hình Đề / Code (hoặc kéo thanh ở giữa, nhấp đúp để về 50/50)">
-            <span style={{ fontSize: '0.68rem', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', marginRight: '2px' }}>Tỉ lệ:</span>
-            <button type="button" className="btn btn-ghost btn-sm" onClick={() => setSplitPercent(30)} style={{ fontSize: '0.72rem', padding: '2px 5px', height: 'auto', minHeight: 'unset' }}>30/70</button>
-            <button type="button" className="btn btn-ghost btn-sm" onClick={() => setSplitPercent(50)} style={{ fontSize: '0.72rem', padding: '2px 5px', height: 'auto', minHeight: 'unset' }}>50/50</button>
-            <button type="button" className="btn btn-ghost btn-sm" onClick={() => setSplitPercent(60)} style={{ fontSize: '0.72rem', padding: '2px 5px', height: 'auto', minHeight: 'unset' }}>60/40</button>
-            <button type="button" className="btn btn-ghost btn-sm" onClick={() => setSplitPercent(70)} style={{ fontSize: '0.72rem', padding: '2px 5px', height: 'auto', minHeight: 'unset' }}>70/30</button>
+          <div className="linear-tabs" title="Tỉ lệ chia màn hình Đề / Code (nhấp đúp thanh ngăn để về 50/50)">
+            <button type="button" className={`linear-tab-btn ${splitPercent === 30 ? 'active' : ''}`} onClick={() => setSplitPercent(30)} style={{ padding: '2px 6px', fontSize: '0.7rem' }}>30/70</button>
+            <button type="button" className={`linear-tab-btn ${splitPercent === 50 || splitPercent === null ? 'active' : ''}`} onClick={() => setSplitPercent(50)} style={{ padding: '2px 6px', fontSize: '0.7rem' }}>50/50</button>
+            <button type="button" className={`linear-tab-btn ${splitPercent === 70 ? 'active' : ''}`} onClick={() => setSplitPercent(70)} style={{ padding: '2px 6px', fontSize: '0.7rem' }}>70/30</button>
           </div>
 
           {/* Auto-save status indicator */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: '5px', fontSize: '0.74rem', color: isConnected ? 'var(--text-muted)' : 'var(--accent-amber)', padding: '3px 8px', background: 'var(--bg-app)', borderRadius: '4px', border: '1px solid var(--border-subtle)' }}>
-            <span style={{ width: '6px', height: '6px', borderRadius: '50%', background: isConnected ? 'var(--accent-emerald)' : 'var(--accent-amber)' }}></span>
-            <span>{isConnected ? codeSaveStatus : 'Lưu cục bộ (Mất mạng)'}</span>
+          <div style={{ display: 'inline-flex', alignItems: 'center', gap: '5px', fontSize: '0.72rem', color: isConnected ? 'var(--text-muted)' : 'var(--accent-amber)', padding: '2px 6px' }}>
+            <span style={{ width: '5px', height: '5px', borderRadius: '50%', background: isConnected ? 'var(--accent-emerald)' : 'var(--accent-amber)' }}></span>
+            <span>{isConnected ? codeSaveStatus : 'Mất mạng'}</span>
           </div>
 
           {/* Contest Countdown Timer */}
           {remainingSeconds !== undefined && remainingSeconds !== null && (
             <div style={{
-              display: 'flex',
+              display: 'inline-flex',
               alignItems: 'center',
-              gap: '6px',
-              padding: '4px 10px',
-              borderRadius: '6px',
+              gap: '5px',
+              padding: '2px 8px',
+              borderRadius: '4px',
               background: remainingSeconds < 300 ? 'rgba(239, 68, 68, 0.15)' : 'rgba(56, 189, 248, 0.12)',
               border: `1px solid ${remainingSeconds < 300 ? 'rgba(239, 68, 68, 0.4)' : 'rgba(56, 189, 248, 0.3)'}`,
               color: remainingSeconds < 300 ? 'var(--accent-rose)' : 'var(--accent-cyan)',
               fontFamily: 'var(--font-mono)',
               fontWeight: 700,
-              fontSize: '0.88rem'
+              fontSize: '0.82rem'
             }}>
-              <Clock size={15} />
+              <Clock size={13} />
               <span>{formatTime(remainingSeconds)}</span>
             </div>
           )}
@@ -471,15 +455,15 @@ export const ProblemDetail: React.FC<Props> = ({
             disabled={isRunningCustom || isSubmitting}
             title="Chạy thử code với input bạn tự nhập (Ctrl + Enter)"
             style={{
-              padding: '6px 14px',
+              padding: '4px 10px',
               fontWeight: 600,
-              fontSize: '0.82rem',
-              display: 'flex',
+              fontSize: '0.78rem',
+              display: 'inline-flex',
               alignItems: 'center',
-              gap: '6px'
+              gap: '5px'
             }}
           >
-            {isRunningCustom ? <RefreshCw size={14} className="animate-spin" /> : <Play size={14} fill="currentColor" />}
+            {isRunningCustom ? <RefreshCw size={13} className="animate-spin" /> : <Play size={13} fill="currentColor" />}
             {isRunningCustom ? 'Đang chạy...' : 'Chạy Thử'}
           </button>
 
@@ -491,25 +475,22 @@ export const ProblemDetail: React.FC<Props> = ({
             disabled={isSubmitting || isRunningCustom}
             title="Nộp bài chính thức lên máy chủ để chấm điểm"
             style={{
-              background: 'linear-gradient(135deg, #10b981 0%, #059669 100%)',
-              border: 'none',
-              padding: '6px 16px',
+              padding: '4px 12px',
               fontWeight: 700,
-              fontSize: '0.82rem',
-              display: 'flex',
+              fontSize: '0.78rem',
+              display: 'inline-flex',
               alignItems: 'center',
-              gap: '6px',
-              boxShadow: '0 2px 10px rgba(16, 185, 129, 0.3)'
+              gap: '5px'
             }}
           >
-            {isSubmitting ? <RefreshCw size={14} className="animate-spin" /> : <Send size={14} />}
-            {isSubmitting ? 'Đang Chấm...' : 'Nộp Bài Chấm Điểm'}
+            {isSubmitting ? <RefreshCw size={13} className="animate-spin" /> : <Send size={13} />}
+            {isSubmitting ? 'Đang Chấm...' : 'Nộp Bài'}
           </button>
         </div>
       </div>
 
       {/* 2. MAIN SPLIT BODY: RESIZABLE SPLIT PANE */}
-      <div style={{ flex: 1, height: 'calc(100% - 50px)', overflow: 'hidden' }}>
+      <div style={{ flex: 1, height: 'calc(100% - 40px)', overflow: 'hidden' }}>
         <ResizableSplitPane
           controlledPercent={splitPercent}
           onPercentChange={() => setSplitPercent(null)}
@@ -962,23 +943,21 @@ export const ProblemDetail: React.FC<Props> = ({
               borderBottom: '1px solid var(--border-subtle)',
               flexShrink: 0
             }}>
-              <div style={{ display: 'flex', gap: '8px' }}>
+              <div className="linear-tabs">
                 <button 
                   type="button"
-                  className={`btn btn-sm ${activeConsoleTab === 'custom' ? 'btn-primary' : 'btn-outline'}`}
-                  style={{ fontSize: '0.78rem', padding: '4px 12px', display: 'flex', alignItems: 'center', gap: '6px' }}
+                  className={`linear-tab-btn ${activeConsoleTab === 'custom' ? 'active' : ''}`}
                   onClick={() => setActiveConsoleTab('custom')}
                 >
-                  <Terminal size={14} /> Chạy Thử Input
+                  <Terminal size={12} /> Chạy Thử Input
                 </button>
 
                 <button 
                   type="button"
-                  className={`btn btn-sm ${activeConsoleTab === 'result' ? 'btn-primary' : 'btn-outline'}`}
-                  style={{ fontSize: '0.78rem', padding: '4px 12px', display: 'flex', alignItems: 'center', gap: '6px' }}
+                  className={`linear-tab-btn ${activeConsoleTab === 'result' ? 'active' : ''}`}
                   onClick={() => setActiveConsoleTab('result')}
                 >
-                  <Sparkles size={14} /> Kết Quả Chấm Bài
+                  <Sparkles size={12} /> Kết Quả Chấm Bài
                   {currentSubmission && (
                     <VerdictBadge status={currentSubmission.status} size="sm" showLabel={false} />
                   )}
@@ -1036,7 +1015,11 @@ export const ProblemDetail: React.FC<Props> = ({
                       disabled={isRunningCustom || isSubmitting}
                       style={{ fontSize: '0.72rem', padding: '2px 8px' }}
                     >
-                      {isRunningCustom ? 'Đang chạy...' : '▶ Chạy lại'}
+                      {isRunningCustom ? 'Đang chạy...' : (
+                        <span style={{ display: 'inline-flex', alignItems: 'center', gap: '3px' }}>
+                          <Play size={10} fill="currentColor" /> Chạy lại
+                        </span>
+                      )}
                     </button>
                   </div>
                   <div style={{ 

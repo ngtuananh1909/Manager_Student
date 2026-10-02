@@ -47,7 +47,7 @@ class LanDiscovery {
           const primaryIp = ips[0] ? ips[0].address : '127.0.0.1';
 
           const payload = JSON.stringify({
-            app: 'SchoolJudgeLAN',
+            app: 'ChauCaoJudgeLAN',
             name: serverInfo.name || 'Phòng Chấm C++ Nội Bộ',
             ip: primaryIp,
             allIps: ips.map(i => i.address),
@@ -89,7 +89,7 @@ class LanDiscovery {
       this.clientSocket.on('message', (msg, rinfo) => {
         try {
           const data = JSON.parse(msg.toString());
-          if (data.app === 'SchoolJudgeLAN') {
+          if (data.app === 'ChauCaoJudgeLAN' || data.app === 'SchoolJudgeLAN') {
             onServerFound({
               ...data,
               discoveredIp: rinfo.address,

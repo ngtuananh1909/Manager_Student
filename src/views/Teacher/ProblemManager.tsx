@@ -583,9 +583,12 @@ export const ProblemManager: React.FC = () => {
         </div>
       </div>
 
-      {/* Problems Grid */}
+      {/* Problems Master Table */}
       {loading ? (
-        <div style={{ textAlign: 'center', padding: '40px', color: 'var(--text-muted)' }}>Đang tải bài tập...</div>
+        <div style={{ textAlign: 'center', padding: '60px', color: 'var(--text-muted)' }}>
+          <RefreshCw size={28} className="animate-spin" style={{ color: 'var(--primary)', marginBottom: '10px' }} />
+          <div style={{ fontSize: '0.88rem', fontWeight: 600 }}>Đang tải danh sách bài tập...</div>
+        </div>
       ) : problems.length === 0 ? (
         <div className="glass-card" style={{ textAlign: 'center', padding: '60px', color: 'var(--text-muted)' }}>
           <FolderUp size={36} color="var(--primary-light)" style={{ marginBottom: '12px' }} />
@@ -594,98 +597,118 @@ export const ProblemManager: React.FC = () => {
             Hệ thống đang ở trạng thái trống. Bạn có thể tự tạo bài mới hoặc nhập nhanh các bài mẫu từ thư mục <strong>TEST/</strong> có sẵn!
           </p>
           <div style={{ display: 'flex', gap: '10px', justifyContent: 'center' }}>
-            <button className="btn btn-secondary btn-sm" onClick={openSampleModal}>
+            <button type="button" className="btn btn-secondary btn-sm" onClick={openSampleModal}>
               <FolderDown size={14} /> Import Từ Thư Mục TEST (LUCKY, PLAN, TEAM)
             </button>
           </div>
         </div>
       ) : (
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(360px, 1fr))', gap: '18px' }}>
-          {problems.map((prob) => (
-            <div key={prob.id} className="glass-card" style={{ display: 'flex', flexDirection: 'column', justifyContent: 'space-between' }}>
-              <div>
-                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '10px' }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                    <span style={{ fontFamily: 'var(--font-mono)', fontWeight: 700, color: 'var(--accent-cyan)' }}>
-                      {prob.code}
+        <div className="arena-problem-table-container">
+          <table className="desktop-data-table">
+            <thead>
+              <tr>
+                <th style={{ width: '48px', textAlign: 'center' }}>#</th>
+                <th style={{ width: '110px' }}>Mã Bài</th>
+                <th>Tên Đề Bài</th>
+                <th style={{ width: '110px' }}>Độ Khó</th>
+                <th style={{ width: '160px' }}>Giới Hạn</th>
+                <th style={{ width: '130px' }}>Bộ Test</th>
+                <th style={{ width: '100px' }}>Điểm</th>
+                <th style={{ width: '180px', textAlign: 'right' }}>Thao Tác</th>
+              </tr>
+            </thead>
+            <tbody>
+              {problems.map((prob, idx) => (
+                <tr key={prob.id} className="data-table-row">
+                  <td style={{ textAlign: 'center', color: 'var(--text-muted)', fontWeight: 600 }}>{idx + 1}</td>
+                  <td>
+                    <span className="code-pill">{prob.code}</span>
+                  </td>
+                  <td>
+                    <div className="table-problem-title">
+                      <span>{prob.title}</span>
+                      {prob.pdfUrl && (
+                        <span className="pdf-tag"><FileText size={10} /> PDF</span>
+                      )}
+                    </div>
+                  </td>
+                  <td>
+                    <span className={`badge ${
+                      prob.difficulty === 'Dễ' ? 'diff-tag-easy' : 
+                      prob.difficulty === 'Trung bình' ? 'diff-tag-medium' : 'diff-tag-hard'
+                    }`}>
+                      {prob.difficulty}
                     </span>
-                    {prob.pdfUrl && (
-                      <span className="badge" style={{ background: 'rgba(239, 68, 68, 0.15)', color: '#f87171', border: '1px solid rgba(239, 68, 68, 0.3)', fontSize: '0.72rem', display: 'inline-flex', alignItems: 'center', gap: '3px' }}>
-                        <FileText size={11} /> Có File Đề
-                      </span>
-                    )}
-                  </div>
-                  <span className={`badge ${
-                    prob.difficulty === 'Dễ' ? 'diff-tag-easy' : 
-                    prob.difficulty === 'Trung bình' ? 'diff-tag-medium' : 'diff-tag-hard'
-                  }`}>
-                    {prob.difficulty}
-                  </span>
-                </div>
-
-                <h3 style={{ fontSize: '1.1rem', marginBottom: '8px' }}>{prob.title}</h3>
-                <div style={{ fontSize: '0.82rem', color: 'var(--text-secondary)', marginBottom: '14px' }}>
-                  Bộ test: <strong>{prob.testCases?.length || 0} test cases</strong> • {prob.points} điểm
-                </div>
-              </div>
-
-              <div style={{ borderTop: '1px solid var(--border-subtle)', paddingTop: '12px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                <div style={{ fontSize: '0.78rem', color: 'var(--text-muted)' }}>
-                  Time: <strong style={{ color: 'var(--accent-amber)' }}>{prob.timeLimit}ms</strong> • RAM: <strong>{prob.memoryLimit || 256}MB</strong>
-                </div>
-
-                <div style={{ display: 'flex', gap: '6px' }}>
-                  {prob.pdfUrl && (
+                  </td>
+                  <td style={{ color: 'var(--text-secondary)', fontSize: '0.78rem', fontFamily: 'var(--font-mono)' }}>
+                    {prob.timeLimit}ms • {prob.memoryLimit || 256}MB
+                  </td>
+                  <td>
                     <button 
+                      type="button"
                       className="btn btn-outline btn-sm"
-                      style={{ fontSize: '0.78rem', padding: '5px 8px', color: 'var(--accent-cyan)' }}
-                      onClick={() => setStatementModal({ title: prob.title, url: `${serverUrl}${prob.pdfUrl}`, fileName: prob.pdfFileName })}
-                      title="Xem đề bài đính kèm"
+                      style={{ padding: '2px 8px', fontSize: '0.74rem', display: 'inline-flex', alignItems: 'center', gap: '4px' }}
+                      onClick={() => openTestCaseManager(prob)}
+                      title="Mở bảng quản lý test case"
                     >
-                      <Eye size={13} />
+                      <Layers size={11} /> {prob.testCases?.length || 0} tests
                     </button>
-                  )}
-                  <button 
-                    className="btn btn-primary btn-sm"
-                    style={{ fontSize: '0.78rem', padding: '5px 10px' }}
-                    onClick={() => openTestCaseManager(prob)}
-                    title="Mở bảng quản lý, sắp xếp, sửa điểm và thêm test case"
-                  >
-                    <Layers size={13} /> Bộ Test ({prob.testCases?.length || 0})
-                  </button>
-                  <button 
-                    className="btn btn-secondary btn-sm"
-                    onClick={async () => {
-                      let tcs = prob.testCases || [];
-                      if (tcs.length === 0 || tcs[0]?.input === undefined) {
-                        try {
-                          const res = await fetch(`${serverUrl}/api/problems/${prob.id}/testcases`);
-                          if (res.ok) tcs = await res.json();
-                        } catch (e) {}
-                      }
-                      setCurrentProb(prob);
-                      setFormSamples(prob.samples && prob.samples.length > 0 ? JSON.parse(JSON.stringify(prob.samples)) : []);
-                      setFormTestCases(tcs && tcs.length > 0 ? JSON.parse(JSON.stringify(tcs)) : []);
-                      setPendingPdf(null);
-                      setRemovePdf(false);
-                      setShowPdfPreview(true);
-                      setIsEditing(true);
-                    }}
-                    title="Chỉnh sửa thông tin bài tập, file đề, test mẫu & testcase"
-                  >
-                    <Edit3 size={13} />
-                  </button>
-                  <button 
-                    className="btn btn-danger btn-sm"
-                    onClick={() => handleDelete(prob.id)}
-                    title="Xóa bài tập"
-                  >
-                    <Trash2 size={13} />
-                  </button>
-                </div>
-              </div>
-            </div>
-          ))}
+                  </td>
+                  <td style={{ fontWeight: 600, color: 'var(--text-main)', fontSize: '0.82rem' }}>
+                    {prob.points}đ
+                  </td>
+                  <td style={{ textAlign: 'right' }}>
+                    <div style={{ display: 'inline-flex', gap: '5px', alignItems: 'center' }}>
+                      {prob.pdfUrl && (
+                        <button 
+                          type="button"
+                          className="btn btn-outline btn-sm"
+                          style={{ padding: '3px 7px', color: 'var(--accent-rose)' }}
+                          onClick={() => setStatementModal({ title: prob.title, url: `${serverUrl}${prob.pdfUrl}`, fileName: prob.pdfFileName })}
+                          title="Xem đề PDF"
+                        >
+                          <Eye size={13} />
+                        </button>
+                      )}
+                      <button 
+                        type="button"
+                        className="btn btn-secondary btn-sm"
+                        style={{ padding: '3px 7px' }}
+                        onClick={async () => {
+                          let tcs = prob.testCases || [];
+                          if (tcs.length === 0 || tcs[0]?.input === undefined) {
+                            try {
+                              const res = await fetch(`${serverUrl}/api/problems/${prob.id}/testcases`);
+                              if (res.ok) tcs = await res.json();
+                            } catch (e) {}
+                          }
+                          setCurrentProb(prob);
+                          setFormSamples(prob.samples && prob.samples.length > 0 ? JSON.parse(JSON.stringify(prob.samples)) : []);
+                          setFormTestCases(tcs && tcs.length > 0 ? JSON.parse(JSON.stringify(tcs)) : []);
+                          setPendingPdf(null);
+                          setRemovePdf(false);
+                          setShowPdfPreview(true);
+                          setIsEditing(true);
+                        }}
+                        title="Chỉnh sửa bài toán"
+                      >
+                        <Edit3 size={13} />
+                      </button>
+                      <button 
+                        type="button"
+                        className="btn btn-danger btn-sm"
+                        style={{ padding: '3px 7px' }}
+                        onClick={() => handleDelete(prob.id)}
+                        title="Xóa bài tập"
+                      >
+                        <Trash2 size={13} />
+                      </button>
+                    </div>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
         </div>
       )}
 

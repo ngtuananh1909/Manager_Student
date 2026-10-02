@@ -1,7 +1,7 @@
 import React, { useState, useEffect, lazy, Suspense } from 'react';
 import { NetworkProvider, useNetwork } from './context/NetworkContext';
 import { AuthProvider, useAuth } from './context/AuthContext';
-import { Navbar } from './components/Navbar';
+import { DesktopShell } from './components/DesktopShell';
 import { FirstRunSetup } from './views/FirstRunSetup';
 import { DeviceRoleSetup } from './views/DeviceRoleSetup';
 import { LoginView } from './views/LoginView';
@@ -27,9 +27,12 @@ const StatisticsView = lazy(() => import('./views/Teacher/StatisticsView').then(
 const JudgeSettings = lazy(() => import('./views/Teacher/JudgeSettings').then(m => ({ default: m.JudgeSettings })));
 
 const ViewLoadingFallback = () => (
-  <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '60vh', gap: '14px', color: 'var(--text-muted)' }}>
-    <div className="spinner" style={{ width: '32px', height: '32px' }}></div>
-    <div style={{ fontSize: '0.88rem', fontWeight: 600 }}>Đang tải phân hệ...</div>
+  <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '60vh', gap: '16px', color: 'var(--text-secondary)' }}>
+    <div style={{ position: 'relative', width: '48px', height: '48px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+      <div className="animate-spin" style={{ position: 'absolute', inset: 0, borderRadius: '50%', border: '2px solid rgba(99, 102, 241, 0.2)', borderTopColor: 'var(--primary)' }} />
+      <div className="animate-pulse-subtle" style={{ width: '20px', height: '20px', borderRadius: '6px', background: 'linear-gradient(135deg, var(--primary) 0%, var(--accent-cyan) 100%)' }} />
+    </div>
+    <div style={{ fontSize: '0.88rem', fontWeight: 600, letterSpacing: '-0.01em', color: 'var(--text-secondary)' }}>Đang tải phân hệ...</div>
   </div>
 );
 
@@ -88,47 +91,43 @@ const MainApp: React.FC = () => {
 
   // 3. Authenticated App Layout (Role is determined automatically)
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', height: '100vh', overflow: 'hidden' }}>
-      <Navbar activeTab={activeTab} setActiveTab={setActiveTab} />
+    <DesktopShell activeTab={activeTab} setActiveTab={setActiveTab}>
+      <Suspense fallback={<ViewLoadingFallback />}>
+        {/* Student Views (User Role) - Primary area is Contests & Exams */}
+        {role === 'user' && (
+          <div key={activeTab} className="view-animated-container" style={{ flex: 1, display: 'flex', flexDirection: 'column', height: '100%', overflow: 'hidden' }}>
+            {(activeTab === 'contests' || activeTab === 'problems') && (
+              <ContestsView />
+            )}
+            {activeTab === 'problem-detail' && selectedProblem && (
+              <ProblemDetail problem={selectedProblem} onBack={handleBackToProblems} />
+            )}
+            {activeTab === 'leaderboard' && <LeaderboardView />}
+            {activeTab === 'submissions' && <SubmissionsHistory />}
+            {activeTab === 'badges' && <BadgesView />}
+          </div>
+        )}
 
-      <main className="app-container">
-        <Suspense fallback={<ViewLoadingFallback />}>
-          {/* Student Views (User Role) - Primary area is Contests & Exams */}
-          {role === 'user' && (
-            <>
-              {(activeTab === 'contests' || activeTab === 'problems') && (
-                <ContestsView />
-              )}
-              {activeTab === 'problem-detail' && selectedProblem && (
-                <ProblemDetail problem={selectedProblem} onBack={handleBackToProblems} />
-              )}
-              {activeTab === 'leaderboard' && <LeaderboardView />}
-              {activeTab === 'submissions' && <SubmissionsHistory />}
-              {activeTab === 'badges' && <BadgesView />}
-            </>
-          )}
-
-          {/* Teacher / Host Views (Host Role) */}
-          {role === 'host' && (
-            <>
-              {activeTab === 'problems-manage' && <ProblemManager />}
-              {activeTab === 'contests-manage' && (
-                <ErrorBoundary fallbackTitle="Đã xảy ra sự cố trong Quản Lý Kỳ Thi">
-                  <ContestManager />
-                </ErrorBoundary>
-              )}
-              {activeTab === 'students' && <StudentManager />}
-              {activeTab === 'live-monitor' && <LiveMonitor />}
-              {activeTab === 'leaderboard' && <LeaderboardView />}
-              {activeTab === 'anti-cheat' && <PlagiarismView />}
-              {activeTab === 'classes' && <ClassManager />}
-              {activeTab === 'statistics' && <StatisticsView />}
-              {activeTab === 'settings' && <JudgeSettings />}
-            </>
-          )}
-        </Suspense>
-      </main>
-    </div>
+        {/* Teacher / Host Views (Host Role) */}
+        {role === 'host' && (
+          <div key={activeTab} className="view-animated-container" style={{ flex: 1, display: 'flex', flexDirection: 'column', height: '100%', overflow: 'hidden' }}>
+            {activeTab === 'problems-manage' && <ProblemManager />}
+            {activeTab === 'contests-manage' && (
+              <ErrorBoundary fallbackTitle="Đã xảy ra sự cố trong Quản Lý Kỳ Thi">
+                <ContestManager />
+              </ErrorBoundary>
+            )}
+            {activeTab === 'students' && <StudentManager />}
+            {activeTab === 'live-monitor' && <LiveMonitor />}
+            {activeTab === 'leaderboard' && <LeaderboardView />}
+            {activeTab === 'anti-cheat' && <PlagiarismView />}
+            {activeTab === 'classes' && <ClassManager />}
+            {activeTab === 'statistics' && <StatisticsView />}
+            {activeTab === 'settings' && <JudgeSettings />}
+          </div>
+        )}
+      </Suspense>
+    </DesktopShell>
   );
 };
 

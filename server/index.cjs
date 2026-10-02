@@ -121,6 +121,18 @@ io.on('connection', (socket) => {
   });
 });
 
+// ROOT STATUS
+app.get('/', (req, res) => {
+  res.json({
+    status: 'online',
+    system: 'ChauCaoJudge Server',
+    serverName: db.getSettings().serverName,
+    version: APP_VERSION,
+    time: new Date().toISOString(),
+    message: 'Máy chủ chấm bài ChauCaoJudge đang hoạt động bình thường.'
+  });
+});
+
 // PING / HEARTBEAT
 app.get('/api/ping', (req, res) => {
   res.json({
@@ -1227,7 +1239,7 @@ app.delete('/api/grade-all/cancel', (req, res) => {
 
 // ─── CONTESTS APIS ────────────────────────────────────────────────────────
 app.get('/api/contests', (req, res) => {
-  const { role, classId } = req.query;
+  const { role, classId, userId } = req.query;
   let contests = db.getContests();
   const now = Date.now();
 
@@ -1244,8 +1256,14 @@ app.get('/api/contests', (req, res) => {
     return { ...c, status };
   });
 
-  if (role !== 'host' && classId) {
-    contests = contests.filter(c => !c.classIds || c.classIds.length === 0 || c.classIds.includes(classId));
+  if (role !== 'host') {
+    let student = userId ? db.getUser(userId) : null;
+    if (!student && classId) {
+      student = { id: '', classId, classes: [classId], role: 'user' };
+    }
+    if (student) {
+      contests = contests.filter(c => db.isStudentEligible(student, c));
+    }
   }
 
   res.json(contests);
@@ -1256,6 +1274,13 @@ app.get('/api/contests/:id', (req, res) => {
   if (!contest) return res.status(404).json({ error: 'Kỳ thi không tồn tại' });
   
   const isHost = req.query.role === 'host';
+  const userId = req.query.userId;
+  if (!isHost && userId) {
+    const student = db.getUser(userId);
+    if (student && !db.isStudentEligible(student, contest)) {
+      return res.status(403).json({ error: 'Bạn không thuộc phạm vi đối tượng được tham gia kỳ thi này.' });
+    }
+  }
   const rawProblems = (contest.problemIds || []).map(pId => db.getProblem(pId)).filter(Boolean);
   const problems = rawProblems.map(p => {
     if (isHost) return p;
@@ -1736,7 +1761,7 @@ app.get('/api/export/csv', (req, res) => {
   });
 
   res.header('Content-Type', 'text/csv; charset=utf-8');
-  res.attachment('Bao_Cao_Diem_SchoolJudge.csv');
+  res.attachment('Bao_Cao_Diem_ChauCaoJudge.csv');
   res.send('\uFEFF' + csv);
 });
 
@@ -1785,7 +1810,7 @@ if (fs.existsSync(distPath)) {
 
 function getUpdatesDir() {
   const appDataDir = process.env.APPDATA || process.env.HOME || process.cwd();
-  const dir = path.join(appDataDir, 'SchoolJudge LAN', 'updates');
+  const dir = path.join(appDataDir, 'ChauCaoJudge LAN', 'updates');
   if (!fs.existsSync(dir)) {
     fs.mkdirSync(dir, { recursive: true });
   }
@@ -1941,19 +1966,19 @@ app.post('/api/update/broadcast', (req, res) => {
 function startServer(port = 4000) {
   server.on('error', (err) => {
     if (err.code === 'EADDRINUSE') {
-      console.warn(`[SchoolJudge LAN Server] Port ${port} is in use, retrying in 2 seconds...`);
+      console.warn(`[ChauCaoJudge LAN Server] Port ${port} is in use, retrying in 2 seconds...`);
       setTimeout(() => {
         try { server.close(); } catch(e) {}
         server.listen(port, '0.0.0.0');
       }, 2000);
     } else {
-      console.error('[SchoolJudge Server Error]', err);
+      console.error('[ChauCaoJudge Server Error]', err);
     }
   });
 
   server.listen(port, '0.0.0.0', () => {
     const settings = db.getSettings();
-    console.log(`[SchoolJudge LAN Server] Running on http://0.0.0.0:${port}`);
+    console.log(`[ChauCaoJudge LAN Server] Running on http://0.0.0.0:${port}`);
     lan.startHostBeacon({
       name: settings.serverName,
       port

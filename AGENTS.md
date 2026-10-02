@@ -860,6 +860,743 @@ NO  → STOP
 
 ---
 
+# 27. 🏫 STUDENT — MULTIPLE CLASSES / GROUPS
+
+## 27.1. MỘT HỌC SINH CÓ THỂ HỌC NHIỀU LỚP
+
+Không được thiết kế dữ liệu theo giả định:
+
+```text
+Student → Class = 1 : 1
+```
+
+Mô hình đúng:
+
+```text
+Student ↔ Class = N : N
+```
+
+Ví dụ:
+
+```text
+Nguyễn Văn A
+├── Lớp 6A1
+├── Lớp Tin học 6
+└── Lớp Bồi dưỡng HSG
+```
+
+Một học sinh có thể đồng thời thuộc nhiều lớp/nhóm.
+
+Một lớp cũng có nhiều học sinh.
+
+Do đó không được dùng một field đơn giản như:
+
+```text
+student.classId
+```
+
+làm nguồn dữ liệu duy nhất cho quan hệ lớp học.
+
+Ưu tiên mô hình:
+
+```text
+Student
+    ↓
+StudentClass / Enrollment
+    ↓
+Class
+```
+
+Ví dụ:
+
+```text
+Student
+{
+  id,
+  name,
+  ...
+}
+
+Class
+{
+  id,
+  name,
+  grade,
+  ...
+}
+
+Enrollment
+{
+  studentId,
+  classId,
+  ...
+}
+```
+
+---
+
+# 28. 📝 EXAM — PHẠM VI ÁP DỤNG ĐỀ
+
+Một đề thi không nhất thiết chỉ dành cho một lớp.
+
+Exam phải hỗ trợ nhiều phạm vi:
+
+```text
+TOÀN TRƯỜNG
+KHỐI
+NHIỀU KHỐI
+LỚP
+NHIỀU LỚP
+NHÓM HỌC SINH
+CÁ NHÂN
+```
+
+Ví dụ:
+
+### Trường hợp 1 — Một đề chung cho tất cả
+
+```text
+Đề: KIỂM TRA TIN HỌC GIỮA KỲ
+
+Phạm vi:
+TOÀN TRƯỜNG
+
+Students:
+Tất cả học sinh đủ điều kiện
+```
+
+Không được tạo nhiều bản sao của cùng một đề chỉ vì học sinh thuộc nhiều lớp.
+
+---
+
+### Trường hợp 2 — Một đề chung cho toàn khối
+
+```text
+Đề: KIỂM TRA TIN HỌC KHỐI 6
+
+Phạm vi:
+KHỐI 6
+
+Students:
+6A1
+6A2
+6A3
+6A4
+...
+```
+
+Một học sinh lớp 6 sẽ nhìn thấy đề này nếu thuộc phạm vi khối 6.
+
+---
+
+### Trường hợp 3 — Một đề cho nhiều lớp
+
+```text
+Đề:
+KIỂM TRA TIN HỌC
+
+Phạm vi:
+6A1
+6A2
+6A3
+7A1
+7A2
+```
+
+Không tạo nhiều Exam khác nhau.
+
+Chỉ tạo:
+
+```text
+1 Exam
++
+nhiều target classes
+```
+
+---
+
+### Trường hợp 4 — Một đề riêng cho một lớp
+
+```text
+Exam
+ ↓
+6A1
+```
+
+Chỉ học sinh thuộc 6A1 được phép tham gia.
+
+---
+
+### Trường hợp 5 — Một học sinh thuộc nhiều lớp
+
+Ví dụ:
+
+```text
+Nguyễn Văn A
+├── 6A1
+├── Tin học nâng cao
+└── HSG Tin học
+```
+
+Nếu Exam áp dụng cho:
+
+```text
+6A1
+```
+
+→ A được làm.
+
+Nếu Exam áp dụng cho:
+
+```text
+HSG Tin học
+```
+
+→ A cũng được làm.
+
+Nếu Exam áp dụng cho:
+
+```text
+7A1
+```
+
+→ A không được làm, trừ khi A thực sự thuộc 7A1.
+
+---
+
+# 29. 🎯 EXAM TARGETING MODEL
+
+Không thiết kế:
+
+```text
+Exam → classId
+```
+
+làm quan hệ duy nhất.
+
+Exam nên có phạm vi:
+
+```text
+Exam
+├── scopeType
+├── targetGrades
+├── targetClasses
+├── targetStudents
+└── ...
+```
+
+Ví dụ:
+
+```text
+scopeType:
+  ALL
+  GRADE
+  CLASS
+  STUDENT
+```
+
+Có thể mở rộng:
+
+```text
+scopeType:
+  ALL
+  GRADE
+  CLASS
+  STUDENT
+  GROUP
+```
+
+---
+
+# 30. 🔍 XÁC ĐỊNH HỌC SINH ĐƯỢC PHÉP THI
+
+Không kiểm tra:
+
+```text
+student.classId === exam.classId
+```
+
+Thay vào đó phải xác định:
+
+```text
+isStudentEligible(student, exam)
+```
+
+Logic tổng quát:
+
+```text
+IF exam.scopeType === ALL
+    → eligible
+
+IF exam.scopeType === GRADE
+    → eligible nếu học sinh thuộc ít nhất một class
+      nằm trong target grade
+
+IF exam.scopeType === CLASS
+    → eligible nếu học sinh thuộc ít nhất một target class
+
+IF exam.scopeType === STUDENT
+    → eligible nếu studentId nằm trong danh sách
+
+IF exam.scopeType === GROUP
+    → eligible nếu học sinh thuộc group tương ứng
+```
+
+---
+
+# 31. 🚨 QUAN TRỌNG — KHÔNG NHÂN BẢN EXAM
+
+Ví dụ:
+
+```text
+Đề kiểm tra chung khối 6
+```
+
+Có:
+
+```text
+6A1
+6A2
+6A3
+6A4
+6A5
+```
+
+KHÔNG tạo:
+
+```text
+Exam-6A1
+Exam-6A2
+Exam-6A3
+Exam-6A4
+Exam-6A5
+```
+
+Phải tạo:
+
+```text
+Exam-001
+scopeType = GRADE
+targetGrade = 6
+```
+
+hoặc:
+
+```text
+Exam-001
+scopeType = CLASS
+targetClasses = [
+  6A1,
+  6A2,
+  6A3,
+  6A4,
+  6A5
+]
+```
+
+Điều này giúp:
+
+* tránh duplicate đề;
+* tránh duplicate testcase;
+* thống nhất leaderboard;
+* thống nhất thời gian thi;
+* thống nhất cấu hình đề;
+* thống nhất kết quả;
+* dễ thống kê.
+
+---
+
+# 32. 📊 EXAM RESULT KHÔNG PHỤ THUỘC 1 CLASS
+
+Submission/result phải gắn với:
+
+```text
+studentId
+examId
+problemId
+```
+
+Không được coi:
+
+```text
+classId
+```
+
+là định danh chính của kết quả.
+
+Nếu cần thống kê theo lớp:
+
+```text
+Result
+   ↓
+Student
+   ↓
+Enrollment
+   ↓
+Class
+```
+
+Như vậy cùng một kết quả có thể được thống kê theo các lớp mà học sinh thuộc về, tùy nghiệp vụ báo cáo.
+
+---
+
+# 33. 📈 THỐNG KÊ THEO LỚP
+
+Hệ thống phải phân biệt:
+
+```text
+Exam
+    ↓
+Student Result
+    ↓
+Student
+    ↓
+Enrollment
+    ↓
+Class
+```
+
+Cho phép thống kê:
+
+```text
+Toàn trường
+↓
+Khối
+↓
+Lớp
+↓
+Học sinh
+```
+
+Nhưng không được tạo bản sao submission chỉ để phục vụ thống kê.
+
+---
+
+# 34. 👨🏫 TEACHER — CHỌN ĐỐI TƯỢNG KHI TẠO ĐỀ
+
+Khi giáo viên tạo Exam, UI nên hỗ trợ:
+
+```text
+PHẠM VI ĐỀ THI
+
+○ Toàn trường
+
+○ Theo khối
+
+○ Chọn lớp
+
+○ Chọn học sinh
+```
+
+Nếu chọn:
+
+### Toàn trường
+
+Không cần chọn class.
+
+### Theo khối
+
+Cho phép:
+
+```text
+☑ Khối 6
+☐ Khối 7
+☐ Khối 8
+...
+```
+
+### Chọn lớp
+
+Cho phép multi-select:
+
+```text
+☑ 6A1
+☑ 6A2
+☑ 6A3
+☐ 6A4
+```
+
+### Chọn học sinh
+
+Cho phép chọn nhiều học sinh.
+
+---
+
+# 35. 👨🎓 STUDENT — PHÒNG THI
+
+Student không chỉ lấy danh sách Exam theo:
+
+```text
+student.classId
+```
+
+Phải tính từ toàn bộ enrollment của học sinh.
+
+Ví dụ:
+
+```text
+Student A
+    │
+    ├── 6A1
+    ├── Tin học
+    └── HSG
+```
+
+Exam list phải xét:
+
+```text
+ALL
++
+GRADE memberships
++
+CLASS memberships
++
+GROUP memberships
++
+STUDENT targeting
+```
+
+Sau đó loại duplicate theo:
+
+```text
+examId
+```
+
+Một Exam chỉ xuất hiện **một lần**.
+
+---
+
+# 36. 🔄 TRƯỜNG HỢP HỌC SINH THUỘC NHIỀU LỚP
+
+Ví dụ:
+
+```text
+Student A
+├── 6A1
+└── HSG Tin học
+```
+
+Có:
+
+```text
+Exam 1 → 6A1
+Exam 2 → HSG Tin học
+Exam 3 → Khối 6
+Exam 4 → Toàn trường
+```
+
+Student A có thể nhìn thấy:
+
+```text
+Exam 1
+Exam 2
+Exam 3
+Exam 4
+```
+
+Nhưng nếu:
+
+```text
+Exam 5 → 6A2
+```
+
+A không được nhìn thấy.
+
+---
+
+# 37. ⚠️ DUPLICATE ELIGIBILITY
+
+Một học sinh có thể đồng thời thỏa nhiều điều kiện.
+
+Ví dụ:
+
+```text
+Student A
+├── thuộc 6A1
+└── thuộc khối 6
+
+Exam:
+├── targetGrade = 6
+└── targetClass = 6A1
+```
+
+Không được tạo hai Exam access.
+
+Kết quả phải là:
+
+```text
+examId = E001
+```
+
+chỉ xuất hiện một lần.
+
+Luôn deduplicate bằng:
+
+```text
+examId
+```
+
+---
+
+# 38. 🔐 PERMISSION VS ELIGIBILITY
+
+Phân biệt:
+
+```text
+Teacher permission
+```
+
+và:
+
+```text
+Student exam eligibility
+```
+
+Teacher có quyền tạo/quản lý Exam.
+
+Student chỉ được làm Exam khi:
+
+```text
+eligible(student, exam)
+```
+
+Không suy luận eligibility chỉ từ quyền truy cập hệ thống.
+
+---
+
+# 39. 🗃️ DATA MODEL — NGUYÊN TẮC
+
+Không ép học sinh vào một lớp duy nhất.
+
+Mô hình khuyến nghị:
+
+```text
+Student
+   │
+   │ N
+   ▼
+Enrollment
+   ▲
+   │ N
+Class
+```
+
+và:
+
+```text
+Exam
+ │
+ ├── scopeType
+ ├── targetGrades[]
+ ├── targetClasses[]
+ ├── targetGroups[]
+ └── targetStudents[]
+```
+
+Không nhất thiết phải triển khai tất cả ngay.
+
+Khi sửa task cụ thể:
+
+> Chỉ triển khai loại targeting mà task yêu cầu.
+
+Không tự ý mở rộng thành một hệ thống group-management lớn.
+
+---
+
+# 40. 🚫 KHÔNG ĐƯỢC SUY DIỄN CLASS DUY NHẤT
+
+Không viết logic kiểu:
+
+```text
+student.classId
+```
+
+nếu mục đích là xác định toàn bộ lớp mà học sinh đang học.
+
+Phải sử dụng:
+
+```text
+student enrollments
+```
+
+hoặc abstraction tương đương hiện có trong project.
+
+Nếu code hiện tại vẫn đang dùng `classId` đơn:
+
+1. Không tự ý refactor toàn hệ thống.
+2. Xác định task hiện tại có cần multi-class hay không.
+3. Nếu có, trace direct dependencies.
+4. Chỉ mở rộng schema/API/UI cần thiết.
+5. Không sửa các module không liên quan.
+
+---
+
+# 41. 🔒 FINAL BUSINESS RULE
+
+SchoolJudge LAN phải hỗ trợ đồng thời:
+
+```text
+                  SCHOOL
+                     │
+          ┌──────────┼──────────┐
+          │          │          │
+        GRADE      CLASS      GROUP
+          │          │          │
+          └──────────┼──────────┘
+                     │
+                  STUDENT
+                     │
+              NHIỀU LỚP/ĐƠN VỊ
+```
+
+Và Exam:
+
+```text
+                  EXAM
+                    │
+        ┌───────────┼───────────┐
+        │           │           │
+      ALL        GRADE        CLASS
+        │           │           │
+        └───────────┼───────────┘
+                    │
+                 STUDENT
+```
+
+**Một học sinh có thể học nhiều lớp.**
+
+**Một đề có thể áp dụng cho nhiều lớp.**
+
+**Một đề có thể áp dụng cho cả khối.**
+
+**Một đề có thể áp dụng cho toàn trường.**
+
+**Một học sinh chỉ nhìn thấy một Exam một lần, dù thỏa nhiều điều kiện targeting.**
+
+**Không nhân bản Exam chỉ vì có nhiều lớp.**
+
+---
+
+# CORE DATA PRINCIPLE
+
+```text
+Student ≠ 1 Class
+
+Student ↔ Class = N:N
+
+Exam ≠ 1 Class
+
+Exam → Target Scope
+
+Eligibility = Function(Student, Exam)
+
+Result = Function(Student, Exam, Problem)
+
+Statistics = Result + Student + Enrollment
+```
+
+---
+
 # CORE PRINCIPLE
 
 ```text

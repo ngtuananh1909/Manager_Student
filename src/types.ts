@@ -122,13 +122,19 @@ export interface VirtualSession {
   createdAt: string;
 }
 
+export type ScopeType = 'ALL' | 'GRADE' | 'CLASS' | 'STUDENT';
+
 export interface Contest {
   id: string;
   title: string;
   description: string;
   mode: 'offline' | 'online'; // 'offline' = Mạng LAN phòng máy (Không cần Internet); 'online' = Trực tuyến qua Internet
+  scopeType?: ScopeType;      // 'ALL' (Toàn trường) | 'GRADE' (Theo khối) | 'CLASS' (Theo lớp) | 'STUDENT' (Chỉ định học sinh)
+  targetGrades?: number[];    // Danh sách khối áp dụng (vd: [6, 7])
+  targetClasses?: string[];   // Danh sách ID/Tên lớp áp dụng
+  targetStudents?: string[];  // Danh sách ID học sinh áp dụng
   totalScore?: number;        // Tổng điểm kỳ thi (mặc định 100, có thể cấu hình 10, 50...)
-  classIds: string[];         // Lớp được tham gia ([] = tất cả)
+  classIds: string[];         // Lớp được tham gia ([] = tất cả, giữ đồng bộ với targetClasses)
   problemIds: string[];       // Danh sách ID/Code bài tập trong đề thi
   startTime: string;          // ISO string
   endTime: string;            // ISO string
@@ -147,7 +153,7 @@ export interface Contest {
   pdfFileName?: string;
   statementHtml?: string;     // HTML nội dung đề thi (tự động chuyển từ docx/md)
   problems?: Problem[];
-  candidateIds?: string[];    // Danh sách học sinh chỉ định ([] = theo classIds)
+  candidateIds?: string[];    // Danh sách học sinh chỉ định (giữ đồng bộ với targetStudents)
   hideTestDetailsForStudents?: boolean; // Ẩn chi tiết input/output đối với thí sinh
   requireFreopen?: boolean;   // Bắt buộc dùng freopen("<tenbai>.inp", "r", stdin) và freopen("<tenbai>.out", "w", stdout)
   ipWhitelist?: string;       // Dải IP hoặc danh sách IP hợp lệ được phép thi (vd: 192.168.1.* hoặc 192.168.1.1-192.168.1.50)
@@ -158,7 +164,8 @@ export interface User {
   username: string;
   fullName: string;
   role: Role;
-  classId: string;
+  classId: string;            // Lớp chính (backward compatibility)
+  classes?: string[];         // Danh sách tất cả các lớp/nhóm mà học sinh tham gia (N:N)
   streak?: number;
   badges?: string[];
   isLocked?: boolean;
@@ -196,6 +203,7 @@ export interface UserExamRecord {
 export interface ClassGroup {
   id: string;
   name: string;
+  grade?: number;             // Khối lớp (vd: 6, 7, 8, 9, 10, 11, 12)
   teacher: string;
   joinCode: string;
 }
