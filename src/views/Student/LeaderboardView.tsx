@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { apiFetch } from '../../lib/api';
 import { LeaderboardEntry, Problem } from '../../types';
 import { useNetwork } from '../../context/NetworkContext';
 import { Trophy, Medal, Award, Flame, RefreshCw, Sparkles, Filter } from 'lucide-react';
@@ -26,8 +27,8 @@ export const LeaderboardView: React.FC = () => {
   const fetchData = async () => {
     try {
       const [lbRes, probRes] = await Promise.all([
-        fetch(`${serverUrl}/api/leaderboard`),
-        fetch(`${serverUrl}/api/problems?role=user`)
+        apiFetch(`${serverUrl}/api/leaderboard`),
+        apiFetch(`${serverUrl}/api/problems`)
       ]);
       if (lbRes.ok) setLeaderboard(await lbRes.json());
       if (probRes.ok) setProblems(await probRes.json());

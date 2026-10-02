@@ -17,12 +17,14 @@ import {
 import { LANDiscoveryModal } from '../components/LANDiscoveryModal';
 
 export const LoginView: React.FC = () => {
-  const { login } = useAuth();
+  const { login, register } = useAuth();
   const { networkMode, serverUrl, isConnected, latency } = useNetwork();
 
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [fullName, setFullName] = useState('');
+  const [joinCode, setJoinCode] = useState('');
+  const [mode, setMode] = useState<'login' | 'register'>('login');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
   const [showNetworkModal, setShowNetworkModal] = useState(false);
@@ -34,7 +36,9 @@ export const LoginView: React.FC = () => {
     setIsSubmitting(true);
     setErrorMsg('');
 
-    const res = await login(username, password, fullName);
+    const res = mode === 'register'
+      ? await register({ username, password, fullName, joinCode })
+      : await login(username, password);
     setIsSubmitting(false);
 
     if (!res.success) {
@@ -95,7 +99,7 @@ export const LoginView: React.FC = () => {
 
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px', marginBottom: '6px' }}>
             <h2 style={{ fontSize: '1.45rem', fontWeight: 800, letterSpacing: '-0.02em', color: 'var(--text-main)' }}>
-              ChauCaoJudge LAN
+              {mode === 'login' ? 'Đăng nhập SchoolJudge' : 'Đăng ký học sinh'}
             </h2>
             <span style={{ 
               fontSize: '0.68rem', 
@@ -112,7 +116,7 @@ export const LoginView: React.FC = () => {
           </div>
 
           <p style={{ color: 'var(--text-secondary)', fontSize: '0.84rem', lineHeight: 1.45 }}>
-            Hệ thống thi đấu và chấm bài lập trình nội bộ trường học
+            {mode === 'login' ? 'Ứng dụng tự động nhận diện vai trò (Giáo viên / Học sinh) theo tài khoản của bạn' : 'Hệ thống thi đấu và chấm bài lập trình nội bộ trường học'}
           </p>
         </div>
 
@@ -181,6 +185,21 @@ export const LoginView: React.FC = () => {
 
         {/* Login Form */}
         <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+          {mode === 'register' && (
+            <div>
+              <label style={{ fontSize: '0.8rem', fontWeight: 600, color: 'var(--text-secondary)', display: 'block', marginBottom: '6px' }}>
+                HỌ VÀ TÊN
+              </label>
+              <input
+                type="text"
+                className="input-field"
+                value={fullName}
+                onChange={(e) => setFullName(e.target.value)}
+                maxLength={100}
+                required
+              />
+            </div>
+          )}
           <div>
             <label style={{ fontSize: '0.78rem', fontWeight: 600, letterSpacing: '0.04em', color: 'var(--text-muted)', display: 'block', marginBottom: '6px', textTransform: 'uppercase' }}>
               Tên Đăng Nhập / Mã Thí Sinh
@@ -212,10 +231,28 @@ export const LoginView: React.FC = () => {
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 style={{ paddingLeft: '38px' }}
+                minLength={10}
+                maxLength={128}
                 required
               />
             </div>
           </div>
+
+          {mode === 'register' && (
+            <div>
+              <label style={{ fontSize: '0.8rem', fontWeight: 600, color: 'var(--text-secondary)', display: 'block', marginBottom: '6px' }}>
+                MÃ THAM GIA LỚP
+              </label>
+              <input
+                type="text"
+                className="input-field"
+                value={joinCode}
+                onChange={(e) => setJoinCode(e.target.value.toUpperCase())}
+                maxLength={20}
+                required
+              />
+            </div>
+          )}
 
           <button 
             type="submit" 
@@ -229,13 +266,24 @@ export const LoginView: React.FC = () => {
               </>
             ) : (
               <>
-                Đăng Nhập Vào Hệ Thống <ArrowRight size={16} />
+                {mode === 'login' ? 'Đăng nhập' : 'Tạo tài khoản'} <ArrowRight size={16} />
               </>
             )}
           </button>
         </form>
 
         <div style={{ marginTop: '22px', textAlign: 'center' }}>
+          <button
+            type="button"
+            className="btn btn-secondary btn-sm"
+            style={{ fontSize: '0.78rem', width: '100%', marginBottom: '8px' }}
+            onClick={() => {
+              setMode(current => current === 'login' ? 'register' : 'login');
+              setErrorMsg('');
+            }}
+          >
+            {mode === 'login' ? 'Đăng ký bằng mã tham gia lớp' : 'Đã có tài khoản? Đăng nhập'}
+          </button>
           <button 
             className="btn btn-outline btn-sm"
             style={{ fontSize: '0.78rem', width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '7px' }}

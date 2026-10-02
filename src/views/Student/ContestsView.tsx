@@ -1,4 +1,6 @@
 import React, { useState, useEffect } from 'react';
+import { apiFetch, downloadAuthenticatedFile } from '../../lib/api';
+import { createViolationDeduper, ViolationSignal } from '../../lib/violationDeduper';
 import { Contest, Problem, Submission, VirtualSession, LeaderboardEntry } from '../../types';
 import { useNetwork } from '../../context/NetworkContext';
 import { useAuth } from '../../context/AuthContext';
@@ -120,22 +122,19 @@ export const ContestsView: React.FC = () => {
       return;
     }
 
+    const deduper = createViolationDeduper();
+    const recordSignal = (signal: ViolationSignal) => {
+      if (!deduper.shouldRecord(signal)) return;
+      setTabViolations(prev => prev + 1);
+      setShowViolationModal(true);
+    };
+
     const handleVisibilityChange = () => {
-      if (document.hidden) {
-        setTabViolations(prev => {
-          const next = prev + 1;
-          setShowViolationModal(true);
-          return next;
-        });
-      }
+      if (document.hidden) recordSignal('visibilitychange');
     };
 
     const handleBlur = () => {
-      setTabViolations(prev => {
-        const next = prev + 1;
-        setShowViolationModal(true);
-        return next;
-      });
+      recordSignal('blur');
     };
 
     document.addEventListener('visibilitychange', handleVisibilityChange);
@@ -165,7 +164,7 @@ export const ContestsView: React.FC = () => {
 
       if (diffSec === 0 && activeVirtualSession) {
         // Auto-finish virtual session when timer reaches zero
-        fetch(`${serverUrl}/api/virtual-sessions/${activeVirtualSession.id}/finish`, { method: 'POST' }).catch(() => {});
+        apiFetch(`${serverUrl}/api/virtual-sessions/${activeVirtualSession.id}/finish`, { method: 'POST' }).catch(() => {});
       }
     };
 
@@ -178,8 +177,7 @@ export const ContestsView: React.FC = () => {
     setLoading(true);
     setFetchError(null);
     try {
-      const userParam = user?.id ? `&userId=${user.id}&classId=${user.classId || ''}` : (user?.classId ? `&classId=${user.classId}` : '');
-      const res = await fetch(`${serverUrl}/api/contests?role=user${userParam}`);
+      const res = await apiFetch(`${serverUrl}/api/contests`);
       if (res.ok) {
         const rawList: Contest[] = await res.json();
         // Rule 35 & 37: Deduplicate by examId (a contest only appears once even if student satisfies multiple criteria)
@@ -196,7 +194,7 @@ export const ContestsView: React.FC = () => {
         if (user) {
           list.filter(c => c.status === 'ended').forEach(async (c) => {
             try {
-              const vRes = await fetch(`${serverUrl}/api/contests/${c.id}/virtual-sessions?userId=${user.id}`);
+              const vRes = await apiFetch(`${serverUrl}/api/contests/${c.id}/virtual-sessions`);
               if (vRes.ok) {
                 const vsList = await vRes.json();
                 setStudentVirtualHistory(prev => ({ ...prev, [c.id]: vsList }));
@@ -218,16 +216,16 @@ export const ContestsView: React.FC = () => {
   const handleEnterContest = async (c: Contest) => {
     if (enteringContestId) return;
 
-    if (c.candidateIds && c.candidateIds.length > 0 && user && !c.candidateIds.includes(user.id)) {
-      alert('Bạn không có tên trong danh sách thí sinh được phân công ca thi này. Vui lòng liên hệ giám thị phòng máy.');
-      return;
-    }
-
     setEnteringContestId(c.id);
     try {
       const cleanBase = (serverUrl || '').replace(/\/+$/, '');
-      const userParam = user?.id ? `?role=user&userId=${user.id}` : '?role=user';
-      const res = await fetch(`${cleanBase}/api/contests/${c.id}${userParam}`);
+      const pinCode = c.requiresPin ? window.prompt('Nhập mã PIN kỳ thi') : '';
+      if (c.requiresPin && pinCode === null) return;
+      const res = await apiFetch(`${cleanBase}/api/contests/${c.id}/join`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ pinCode: pinCode || '' })
+      });
       if (!res.ok) {
         const err = await res.json().catch(() => ({}));
         alert(err.error || `Không thể tải dữ liệu phòng thi (Mã lỗi HTTP: ${res.status})`);
@@ -235,33 +233,16 @@ export const ContestsView: React.FC = () => {
       }
 
       const fullContest: Contest = await res.json();
-      if (fullContest.candidateIds && fullContest.candidateIds.length > 0 && user && !fullContest.candidateIds.includes(user.id)) {
-        alert('Bạn không có tên trong danh sách thí sinh được phân công ca thi này. Vui lòng liên hệ giám thị phòng máy.');
-        return;
-      }
-
-      if (fullContest.status === 'upcoming') {
-        alert('Chưa đến giờ bắt đầu kỳ thi này! Vui lòng chờ giám thị phòng máy mở đề.');
-        return;
-      }
-
       setActiveContest(fullContest);
       setActiveContestProblems(fullContest.problems || []);
       setActiveProblem(null);
       setActiveVirtualSession(null);
       setTabViolations(0);
 
-      // Register live attendance if user is logged in
+      // Fetch authenticated student's official submissions for this contest.
       if (user) {
-        fetch(`${cleanBase}/api/contests/${c.id}/attendance`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ userId: user.id, status: 'present' })
-        }).catch(() => {});
-
-        // Fetch user's official submissions for this contest
         try {
-          const subRes = await fetch(`${cleanBase}/api/submissions?userId=${user.id}&contestId=${c.id}&isVirtual=false`);
+          const subRes = await apiFetch(`${cleanBase}/api/submissions?contestId=${c.id}&isVirtual=false`);
           if (subRes.ok) {
             setContestSubmissions(await subRes.json());
           }
@@ -281,10 +262,10 @@ export const ContestsView: React.FC = () => {
     if (!user) return;
     setStartingVirtual(true);
     try {
-      const res = await fetch(`${serverUrl}/api/contests/${c.id}/virtual-start`, {
+      const res = await apiFetch(`${serverUrl}/api/contests/${c.id}/virtual-start`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ userId: user.id, userName: user.fullName || user.username })
+        body: JSON.stringify({})
       });
 
       if (!res.ok) {
@@ -294,11 +275,9 @@ export const ContestsView: React.FC = () => {
         return;
       }
 
-      const session: VirtualSession = await res.json();
-
-      // Fetch full contest details and problems
-      const contestRes = await fetch(`${serverUrl}/api/contests/${c.id}`);
-      const fullContest: Contest = await contestRes.json();
+      const payload: VirtualSession & { contest: Contest } = await res.json();
+      const session: VirtualSession = payload;
+      const fullContest: Contest = payload.contest;
 
       setActiveContest(fullContest);
       setActiveContestProblems(fullContest.problems || []);
@@ -320,7 +299,7 @@ export const ContestsView: React.FC = () => {
     if (!window.confirm('Bạn có chắc chắn muốn nộp bài và kết thúc phiên thi ảo này?')) return;
 
     try {
-      await fetch(`${serverUrl}/api/virtual-sessions/${activeVirtualSession.id}/finish`, {
+      await apiFetch(`${serverUrl}/api/virtual-sessions/${activeVirtualSession.id}/finish`, {
         method: 'POST'
       });
       alert('Phiên thi ảo đã kết thúc! Kết quả của bạn đã được ghi nhận vào Bảng Xếp Hạng Thi Ảo.');
@@ -338,7 +317,7 @@ export const ContestsView: React.FC = () => {
     setVirtualLeaderboardContest(c);
     setLoadingVirtualLeaderboard(true);
     try {
-      const res = await fetch(`${serverUrl}/api/contests/${c.id}/virtual-leaderboard`);
+      const res = await apiFetch(`${serverUrl}/api/contests/${c.id}/virtual-leaderboard`);
       if (res.ok) {
         setVirtualLeaderboard(await res.json());
       }
@@ -442,10 +421,9 @@ export const ContestsView: React.FC = () => {
 
         {/* Problem Detail view */}
         <ProblemDetail 
-          problem={activeProblem} 
-          onBack={() => setActiveProblem(null)} 
+          problem={activeProblem}
+          onBack={() => setActiveProblem(null)}
           contestId={activeContest.id}
-          isVirtual={!!activeVirtualSession}
           virtualSessionId={activeVirtualSession?.id}
           contestProblems={activeContest.problems || []}
           onSelectProblem={(p) => setActiveProblem(p)}
@@ -460,12 +438,12 @@ export const ContestsView: React.FC = () => {
           <div className="modal-overlay" style={{ zIndex: 9999 }}>
             <div className="glass-panel" style={{ maxWidth: '440px', padding: '24px', textAlign: 'center', border: '2px solid var(--accent-rose)' }}>
               <ShieldAlert size={48} style={{ color: 'var(--accent-rose)', margin: '0 auto 12px' }} />
-              <h3 style={{ color: 'var(--accent-rose)', marginBottom: '8px' }}>CẢNH BÁO GIAN LẬN THI TRỰC TUYẾN</h3>
+              <h3 style={{ color: 'var(--accent-rose)', marginBottom: '8px' }}>TÍN HIỆU RỜI CỬA SỔ LÀM BÀI</h3>
               <p style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', marginBottom: '14px', lineHeight: 1.5 }}>
-                Hệ thống phát hiện bạn vừa <strong>rời khỏi cửa sổ làm bài hoặc chuyển sang tab khác</strong>!
+                Hệ thống ghi nhận cửa sổ làm bài vừa mất focus hoặc bị ẩn. Đây là tín hiệu giám sát để giám thị xem xét, không phải kết luận gian lận.
               </p>
               <div style={{ background: 'rgba(244,63,94,0.1)', padding: '8px', borderRadius: '4px', marginBottom: '18px', fontWeight: 700, color: '#f87171' }}>
-                Số lần vi phạm: {tabViolations} / {activeContest.antiCheat?.maxTabViolations || 3}
+                Số tín hiệu cần xem xét: {tabViolations} / {activeContest.antiCheat?.maxTabViolations || 3}
               </div>
               <button 
                 className="btn btn-primary" 
@@ -656,14 +634,14 @@ export const ContestsView: React.FC = () => {
                 </div>
 
                 <div style={{ display: 'flex', gap: '8px' }}>
-                  <a 
-                    href={`${serverUrl}${activeContest.pdfUrl}`}
-                    download={activeContest.pdfFileName || `${activeContest.title}.pdf`}
+                  <button
+                    type="button"
+                    onClick={() => downloadAuthenticatedFile(`${serverUrl}${activeContest.pdfUrl}`, activeContest.pdfFileName || `${activeContest.title}.pdf`).catch(error => alert(error.message))}
                     className="btn btn-secondary btn-sm"
-                    style={{ display: 'inline-flex', alignItems: 'center', gap: '5px', textDecoration: 'none' }}
+                    style={{ display: 'inline-flex', alignItems: 'center', gap: '5px' }}
                   >
                     <Download size={13} /> Tải Về Máy
-                  </a>
+                  </button>
                   <button className="btn btn-outline btn-sm" onClick={() => setViewingContestPdf(false)}>
                     <X size={15} />
                   </button>
@@ -1060,52 +1038,6 @@ export const ContestsView: React.FC = () => {
         </div>
       )}
 
-      {/* ── MODAL: XEM ĐỀ THI TỔNG HỢP PDF CHO HỌC SINH ─────── */}
-      {viewingContestPdf && activeContest && activeContest.pdfUrl && (
-        <div className="modal-overlay" onClick={() => setViewingContestPdf(false)} style={{ zIndex: 9999 }}>
-          <div 
-            className="glass-panel" 
-            style={{ width: '95%', maxWidth: '980px', height: '90vh', display: 'flex', flexDirection: 'column', padding: '20px' }}
-            onClick={e => e.stopPropagation()}
-          >
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '12px' }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                <FileText size={22} color="var(--accent-rose)" />
-                <div>
-                  <h3 style={{ fontSize: '1.15rem', margin: 0 }}>Đề Thi: {activeContest.title}</h3>
-                  <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
-                    {activeContest.pdfFileName || 'de_thi.pdf'}
-                  </div>
-                </div>
-              </div>
-
-              <div style={{ display: 'flex', gap: '8px' }}>
-                <a 
-                  href={`${serverUrl}${activeContest.pdfUrl}`}
-                  download={activeContest.pdfFileName || `${activeContest.title}.pdf`}
-                  className="btn btn-secondary btn-sm"
-                  style={{ display: 'inline-flex', alignItems: 'center', gap: '5px', textDecoration: 'none' }}
-                >
-                  <Download size={13} /> Tải Về Máy
-                </a>
-                <button className="btn btn-outline btn-sm" onClick={() => setViewingContestPdf(false)}>
-                  <X size={15} />
-                </button>
-              </div>
-            </div>
-
-            <div style={{ flex: 1, overflow: 'hidden' }}>
-              <StatementViewer
-                url={activeContest.pdfUrl}
-                fileName={activeContest.pdfFileName}
-                title={activeContest.title}
-                serverUrl={serverUrl}
-                height="100%"
-              />
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   );
 };

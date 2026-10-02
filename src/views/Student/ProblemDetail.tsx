@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
+import { apiFetch } from '../../lib/api';
 import Editor from '@monaco-editor/react';
 import confetti from 'canvas-confetti';
 import { Problem, Submission, Verdict, Contest } from '../../types';
@@ -35,7 +36,6 @@ interface Props {
   problem: Problem;
   onBack: () => void;
   contestId?: string;
-  isVirtual?: boolean;
   virtualSessionId?: string;
   contestProblems?: Problem[];
   onSelectProblem?: (p: Problem) => void;
@@ -49,7 +49,6 @@ export const ProblemDetail: React.FC<Props> = ({
   problem, 
   onBack, 
   contestId, 
-  isVirtual, 
   virtualSessionId,
   contestProblems = [],
   onSelectProblem,
@@ -59,7 +58,7 @@ export const ProblemDetail: React.FC<Props> = ({
   contestDocFileName
 }) => {
   const { user } = useAuth();
-  const { serverUrl, socket } = useNetwork();
+  const { serverUrl, socket, isConnected } = useNetwork();
 
   // Storage key for auto-saving drafts per problem
   const storageKey = `schooljudge_draft_${contestId || 'free'}_${problem.id}`;
@@ -198,7 +197,7 @@ export const ProblemDetail: React.FC<Props> = ({
 
   useEffect(() => {
     if (contestId && serverUrl) {
-      fetch(`${serverUrl}/api/contests/${contestId}`)
+      apiFetch(`${serverUrl}/api/contests/${contestId}`)
         .then(res => res.json())
         .then(data => {
           if (data && !data.error) setContestInfo(data);
@@ -253,7 +252,7 @@ export const ProblemDetail: React.FC<Props> = ({
     setCustomTime(null);
 
     try {
-      const res = await fetch(`${serverUrl}/api/custom-run`, {
+      const res = await apiFetch(`${serverUrl}/api/custom-run`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ 
@@ -301,16 +300,13 @@ export const ProblemDetail: React.FC<Props> = ({
     setJudgeProgress({ current: 0, total: totalExpectedTests, message: 'Đang gửi code lên máy chủ chấm...' });
 
     try {
-      const res = await fetch(`${serverUrl}/api/submissions`, {
+      const res = await apiFetch(`${serverUrl}/api/submissions`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          userId: user.id,
-          userName: user.fullName || user.username,
           problemId: problem.id,
           code,
           contestId: contestId || undefined,
-          isVirtual: !!isVirtual,
           virtualSessionId: virtualSessionId || undefined
         })
       });

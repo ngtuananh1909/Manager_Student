@@ -30,6 +30,9 @@ export interface Problem {
   memoryLimit: number; // MB
   category: string;
   description: string;
+  inputDescription?: string;
+  outputDescription?: string;
+  constraints?: string;
   statement?: string;
   statementHtml?: string;
   samples?: ProblemSample[];
@@ -143,6 +146,7 @@ export interface Contest {
   gradingMode: 'direct' | 'batch_after_deadline'; // Chấm trực tiếp hay chấm sau khi hết giờ
   freezeScoreboardMinutes: number; // Đóng băng BXH trước khi hết giờ (phút)
   pinCode?: string;           // Mã PIN phòng thi
+  requiresPin?: boolean;      // Server-safe signal; the PIN value is never returned to students
   antiCheat: {
     preventTabSwitch: boolean;
     maxTabViolations: number;
@@ -169,6 +173,7 @@ export interface User {
   streak?: number;
   badges?: string[];
   isLocked?: boolean;
+  mustChangePassword?: boolean;
 }
 
 export type AttendanceStatus = 'present' | 'absent_excused' | 'absent_unexcused' | 'submitted' | 'suspended';

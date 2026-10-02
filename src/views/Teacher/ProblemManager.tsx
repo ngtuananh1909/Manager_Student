@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
+import { apiFetch } from '../../lib/api';
 import { Problem, TestCase, ProblemSample } from '../../types';
 import { useNetwork } from '../../context/NetworkContext';
 import { StatementViewer } from '../../components/StatementViewer';
@@ -25,7 +26,7 @@ import {
   Eye,
   Copy,
   Check,
-  Balance,
+  FlaskConical,
   RefreshCw
 } from 'lucide-react';
 
@@ -108,7 +109,7 @@ export const ProblemManager: React.FC = () => {
 
   const fetchProblems = async () => {
     try {
-      const res = await fetch(`${serverUrl}/api/problems?role=host`);
+      const res = await apiFetch(`${serverUrl}/api/problems`);
       if (res.ok) setProblems(await res.json());
     } catch (e) {
       console.error(e);
@@ -144,7 +145,7 @@ export const ProblemManager: React.FC = () => {
     setSampleLoading(true);
     setSampleImportMsg('');
     try {
-      const res = await fetch(`${serverUrl}/api/sample-tests`);
+      const res = await apiFetch(`${serverUrl}/api/sample-tests`);
       if (res.ok) {
         const data = await res.json();
         setSampleProblems(data);
@@ -160,7 +161,7 @@ export const ProblemManager: React.FC = () => {
     setImportingSample(true);
     setSampleImportMsg('');
     try {
-      const res = await fetch(`${serverUrl}/api/sample-tests/import`, {
+      const res = await apiFetch(`${serverUrl}/api/sample-tests/import`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ folder, importAll })
@@ -275,7 +276,7 @@ export const ProblemManager: React.FC = () => {
         testCases: formTestCases
       };
 
-      const res = await fetch(url, {
+      const res = await apiFetch(url, {
         method,
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload)
@@ -287,7 +288,7 @@ export const ProblemManager: React.FC = () => {
 
         // If a new file was selected, upload it
         if (pendingPdf && probId) {
-          await fetch(`${serverUrl}/api/problems/${probId}/pdf`, {
+          await apiFetch(`${serverUrl}/api/problems/${probId}/pdf`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
@@ -296,7 +297,7 @@ export const ProblemManager: React.FC = () => {
             })
           });
         } else if (removePdf && probId) {
-          await fetch(`${serverUrl}/api/problems/${probId}/pdf`, { method: 'DELETE' });
+          await apiFetch(`${serverUrl}/api/problems/${probId}/pdf`, { method: 'DELETE' });
         }
 
         setIsEditing(false);
@@ -315,7 +316,7 @@ export const ProblemManager: React.FC = () => {
   const handleDelete = async (id: string) => {
     if (!confirm('Bạn có chắc chắn muốn xoá bài tập này?')) return;
     try {
-      const res = await fetch(`${serverUrl}/api/problems/${id}`, { method: 'DELETE' });
+      const res = await apiFetch(`${serverUrl}/api/problems/${id}`, { method: 'DELETE' });
       if (res.ok) {
         fetchProblems();
       }
@@ -381,7 +382,7 @@ export const ProblemManager: React.FC = () => {
     }
 
     try {
-      const res = await fetch(`${serverUrl}/api/problems/${importModalProb.id}/import-folder`, {
+      const res = await apiFetch(`${serverUrl}/api/problems/${importModalProb.id}/import-folder`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -420,7 +421,7 @@ export const ProblemManager: React.FC = () => {
       setActiveTestCases([...prob.testCases]);
     } else {
       try {
-        const res = await fetch(`${serverUrl}/api/problems/${prob.id}/testcases`);
+        const res = await apiFetch(`${serverUrl}/api/problems/${prob.id}/testcases`);
         if (res.ok) {
           const tcs = await res.json();
           setActiveTestCases(tcs);
@@ -503,7 +504,7 @@ export const ProblemManager: React.FC = () => {
     setTestCaseSaveSuccess(false);
 
     try {
-      const res = await fetch(`${serverUrl}/api/problems/${testCaseModalProb.id}/testcases`, {
+      const res = await apiFetch(`${serverUrl}/api/problems/${testCaseModalProb.id}/testcases`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ testCases: activeTestCases })
@@ -678,7 +679,7 @@ export const ProblemManager: React.FC = () => {
                           let tcs = prob.testCases || [];
                           if (tcs.length === 0 || tcs[0]?.input === undefined) {
                             try {
-                              const res = await fetch(`${serverUrl}/api/problems/${prob.id}/testcases`);
+                              const res = await apiFetch(`${serverUrl}/api/problems/${prob.id}/testcases`);
                               if (res.ok) tcs = await res.json();
                             } catch (e) {}
                           }

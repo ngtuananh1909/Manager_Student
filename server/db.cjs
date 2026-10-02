@@ -1,9 +1,18 @@
 const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
-const { v4: uuidv4 } = require('uuid');
+
+function newId(prefix) {
+  return `${prefix}-${crypto.randomUUID()}`;
+}
 
 function getDataDir() {
+  if (process.env.SCHOOLJUDGE_DATA_DIR) {
+    const configuredPath = path.resolve(process.env.SCHOOLJUDGE_DATA_DIR);
+    if (!fs.existsSync(configuredPath)) fs.mkdirSync(configuredPath, { recursive: true });
+    return configuredPath;
+  }
+
   try {
     const electron = require('electron');
     const app = electron.app || electron.remote?.app;
@@ -268,10 +277,15 @@ class Database {
   }
 
   setupFirstAdmin(adminData) {
+    if (!adminData.passwordHash) {
+      const error = new Error('A pre-hashed password is required');
+      error.code = 'PASSWORD_HASH_REQUIRED';
+      throw error;
+    }
     const admin = {
-      id: "usr-" + Date.now(),
+      id: newId('usr'),
       username: adminData.username.trim().toLowerCase(),
-      passwordHash: this.hashPassword(adminData.password || 'admin123'),
+      passwordHash: adminData.passwordHash,
       fullName: adminData.fullName || "Quản trị viên / Giáo viên",
       role: 'host',
       classId: 'admin-class',
@@ -286,7 +300,7 @@ class Database {
 
     // Seed a default class for students
     const defaultClass = {
-      id: "cls-" + Date.now(),
+      id: newId('cls'),
       name: adminData.className || "Lớp Tin Học 1",
       teacher: admin.fullName,
       joinCode: "TIN01"
@@ -337,7 +351,7 @@ class Database {
   createProblem(prob) {
     if (!this.data.problems) this.data.problems = [];
     const globalMem = this.data.settings?.globalMemoryLimit || 256;
-    const probId = "prob-" + Date.now() + "-" + Math.random().toString(36).substring(2, 6);
+    const probId = newId('prob');
     const rawTestCases = Array.isArray(prob.testCases) ? prob.testCases : [];
     
     // Save testcases to dedicated storage
@@ -407,14 +421,18 @@ class Database {
   getUser(id) { return this.data.users.find(u => u.id === id || u.username === id); }
   
   createUser(user) {
+    if (!user.passwordHash) {
+      const error = new Error('A pre-hashed password is required');
+      error.code = 'PASSWORD_HASH_REQUIRED';
+      throw error;
+    }
     const classes = Array.isArray(user.classes) && user.classes.length > 0
       ? user.classes
       : (user.classId ? [user.classId] : [this.data.classes[0]?.id || "cls-1"]);
-
     const newUser = {
-      id: "usr-" + Date.now(),
+      id: newId('usr'),
       username: user.username.trim().toLowerCase(),
-      passwordHash: this.hashPassword(user.password || '123456'),
+      passwordHash: user.passwordHash,
       fullName: user.fullName || user.username,
       role: user.role || "user",
       classId: classes[0] || (this.data.classes[0]?.id || "cls-1"),
@@ -422,6 +440,7 @@ class Database {
       streak: 1,
       badges: [],
       isLocked: false,
+      mustChangePassword: !!user.mustChangePassword,
       createdAt: new Date().toISOString()
     };
     this.data.users.push(newUser);
@@ -457,10 +476,16 @@ class Database {
     return null;
   }
 
-  resetUserPassword(id, newPassword = '123456') {
+  setUserPasswordHash(id, passwordHash, mustChangePassword = false) {
+    if (!passwordHash) {
+      const error = new Error('A pre-hashed password is required');
+      error.code = 'PASSWORD_HASH_REQUIRED';
+      throw error;
+    }
     const user = this.data.users.find(u => u.id === id || u.username === id);
     if (user) {
-      user.passwordHash = this.hashPassword(newPassword);
+      user.passwordHash = passwordHash;
+      user.mustChangePassword = !!mustChangePassword;
       this.save();
       return user;
     }
@@ -495,7 +520,7 @@ class Database {
     const name = cls.name.trim();
     const autoGrade = parseInt(name.match(/\d+/)?.[0] || '0', 10) || null;
     const newClass = {
-      id: "cls-" + Date.now(),
+      id: newId('cls'),
       name,
       grade: cls.grade !== undefined && cls.grade !== null && cls.grade !== '' ? Number(cls.grade) : autoGrade,
       teacher: cls.teacher || "Giáo viên",
@@ -534,7 +559,7 @@ class Database {
 
   createSubmission(sub) {
     const newSub = {
-      id: "sub-" + Date.now(),
+      id: newId('sub'),
       userId: sub.userId,
       userName: sub.userName || "Học sinh",
       problemId: sub.problemId,
@@ -650,7 +675,7 @@ class Database {
     }
 
     const newContest = {
-      id: "cnt-" + Date.now(),
+      id: newId('cnt'),
       title: String(contest.title || "").trim(),
       description: String(contest.description || ""),
       mode: contest.mode || "offline", // "offline" = Mạng LAN phòng máy; "online" = Trực tuyến qua Internet
@@ -659,8 +684,8 @@ class Database {
       targetClasses,
       targetStudents,
       totalScore: Number(contest.totalScore) || 100, // Tổng điểm toàn kỳ thi (mặc định 100)
-      classIds: targetClasses, // Giữ đồng bộ cho backward compatibility
-      candidateIds: targetStudents, // Giữ đồng bộ cho backward compatibility
+      classIds: Array.isArray(contest.classIds) ? contest.classIds : (targetClasses || []), // Array of class IDs allowed to take contest ([] = all)
+      candidateIds: Array.isArray(contest.candidateIds) ? contest.candidateIds : (targetStudents || []),
       problemIds: Array.isArray(contest.problemIds) ? contest.problemIds : [], // Array of problem IDs in contest
       pdfUrl: contest.pdfUrl || "",
       pdfFileName: contest.pdfFileName || "",
@@ -674,6 +699,8 @@ class Database {
       freezeScoreboardMinutes: Number(contest.freezeScoreboardMinutes) || 15,
       pinCode: contest.pinCode ? String(contest.pinCode).trim() : "",
       hideTestDetailsForStudents: contest.hideTestDetailsForStudents !== false,
+      requireFreopen: !!contest.requireFreopen,
+      ipWhitelist: String(contest.ipWhitelist || '').trim(),
       antiCheat: {
         preventTabSwitch: contest.antiCheat?.preventTabSwitch !== false,
         maxTabViolations: Number(contest.antiCheat?.maxTabViolations) || 3,
@@ -778,11 +805,10 @@ class Database {
     return false;
   }
 
-  getContestLeaderboard(contestId, isVirtual = false) {
+  getContestLeaderboard(contestId, isVirtual = false, options = {}) {
     const contest = this.getContest(contestId);
     if (!contest) return [];
 
-    const problemIds = new Set(contest.problemIds || []);
     const allowedClasses = new Set(contest.classIds || []);
     
     // Filter users allowed for this contest
@@ -808,9 +834,14 @@ class Database {
 
     // Submissions for this contest: strictly separate official vs virtual!
     const contestSubs = this.data.submissions.filter(s => {
-      const matchContest = s.contestId === contestId || (!s.contestId && problemIds.has(s.problemId));
+      const matchContest = s.contestId === contestId;
       if (!matchContest) return false;
-      return isVirtual ? !!s.isVirtual : !s.isVirtual;
+      if (isVirtual ? !s.isVirtual : !!s.isVirtual) return false;
+      if (options.submittedBefore) {
+        const submittedAt = new Date(s.submittedAt).getTime();
+        if (!Number.isFinite(submittedAt) || submittedAt > options.submittedBefore) return false;
+      }
+      return true;
     });
 
     for (const sub of contestSubs) {
@@ -872,7 +903,7 @@ class Database {
     const duration = durationMinutes || (contest ? contest.durationMinutes : 90);
     const now = Date.now();
     const session = {
-      id: `vs-${Date.now()}-${uuidv4().slice(0, 8)}`,
+      id: newId('vs'),
       userId,
       userName,
       contestId,
@@ -963,6 +994,19 @@ class Database {
   }
 
   // Contest Attendance & Candidate Whitelist
+  getContestAttendanceRecord(contestId, userId) {
+    const record = this.data.contest_attendance?.[contestId]?.[userId];
+    if (!record) return null;
+    return {
+      status: record.status || 'present',
+      extraMinutes: Number(record.extraMinutes) || 0,
+      reason: record.reason || '',
+      reopened: !!record.reopened,
+      ...(record.ip ? { ip: record.ip } : {}),
+      ...(record.lastActive ? { lastActive: record.lastActive } : {})
+    };
+  }
+
   getContestAttendance(contestId) {
     const contest = this.getContest(contestId);
     if (!contest) return [];
@@ -1022,12 +1066,13 @@ class Database {
     if (!this.data.contest_attendance) this.data.contest_attendance = {};
     if (!this.data.contest_attendance[contestId]) this.data.contest_attendance[contestId] = {};
     
-    const existing = this.data.contest_attendance[contestId][userId] || { status: 'present', extraMinutes: 0, reason: '' };
+    const existing = this.data.contest_attendance[contestId][userId] || { status: 'present', extraMinutes: 0, reason: '', reopened: false };
     if (data.status) existing.status = data.status;
     if (data.reason !== undefined) existing.reason = data.reason;
     if (data.extraMinutes !== undefined) existing.extraMinutes = Number(data.extraMinutes) || 0;
     if (data.ip) existing.ip = data.ip;
     if (data.lastActive) existing.lastActive = data.lastActive;
+    if (data.reopened !== undefined) existing.reopened = !!data.reopened;
 
     this.data.contest_attendance[contestId][userId] = existing;
     this.save();
@@ -1038,7 +1083,7 @@ class Database {
     if (!this.data.contest_attendance) this.data.contest_attendance = {};
     if (!this.data.contest_attendance[contestId]) this.data.contest_attendance[contestId] = {};
     
-    const existing = this.data.contest_attendance[contestId][userId] || { status: 'present', extraMinutes: 0, reason: '' };
+    const existing = this.data.contest_attendance[contestId][userId] || { status: 'present', extraMinutes: 0, reason: '', reopened: false };
     existing.extraMinutes = (existing.extraMinutes || 0) + Number(extraMinutes);
     this.data.contest_attendance[contestId][userId] = existing;
     this.save();
@@ -1049,8 +1094,9 @@ class Database {
     if (!this.data.contest_attendance) this.data.contest_attendance = {};
     if (!this.data.contest_attendance[contestId]) this.data.contest_attendance[contestId] = {};
     
-    const existing = this.data.contest_attendance[contestId][userId] || { status: 'present', extraMinutes: 0, reason: '' };
+    const existing = this.data.contest_attendance[contestId][userId] || { status: 'present', extraMinutes: 0, reason: '', reopened: false };
     existing.status = 'present';
+    existing.reopened = true;
     this.data.contest_attendance[contestId][userId] = existing;
 
     const vs = (this.data.virtual_sessions || []).find(v => v.contestId === contestId && v.userId === userId && v.status === 'completed');

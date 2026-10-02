@@ -26,7 +26,6 @@ export const UpdateNotification: React.FC = () => {
   const [status, setStatus] = useState<UpdateStatus>('idle');
   const [updateInfo, setUpdateInfo] = useState<UpdateInfo | null>(null);
   const [progress, setProgress] = useState<DownloadProgress | null>(null);
-  const [downloadedFilePath, setDownloadedFilePath] = useState<string | null>(null);
   const [errorMessage, setErrorMessage] = useState<string>('');
   const [dismissed, setDismissed] = useState(false);
   const [currentVersion, setCurrentVersion] = useState<string>('');
@@ -45,9 +44,10 @@ export const UpdateNotification: React.FC = () => {
   // Listen for download progress
   useEffect(() => {
     if (electronAPI?.onUpdateProgress) {
-      electronAPI.onUpdateProgress((data: DownloadProgress) => {
+      const unsubscribe = electronAPI.onUpdateProgress((data: DownloadProgress) => {
         setProgress(data);
       });
+      return typeof unsubscribe === 'function' ? unsubscribe : undefined;
     }
   }, []);
 
@@ -143,7 +143,6 @@ export const UpdateNotification: React.FC = () => {
       const result = await electronAPI.downloadUpdate(serverUrl);
 
       if (result.success) {
-        setDownloadedFilePath(result.filePath);
         setStatus('downloaded');
         // Auto-install countdown
         setAutoInstallCountdown(3);
@@ -158,12 +157,12 @@ export const UpdateNotification: React.FC = () => {
   }, [serverUrl]);
 
   const handleInstall = useCallback(async () => {
-    if (!electronAPI?.installUpdate || !downloadedFilePath) return;
+    if (!electronAPI?.installUpdate) return;
 
     setStatus('installing');
 
     try {
-      const result = await electronAPI.installUpdate(downloadedFilePath);
+      const result = await electronAPI.installUpdate();
       if (!result.success) {
         setErrorMessage(result.error || 'Lỗi khi cài đặt.');
         setStatus('error');
@@ -173,7 +172,7 @@ export const UpdateNotification: React.FC = () => {
       setErrorMessage(err.message || 'Lỗi khi cài đặt.');
       setStatus('error');
     }
-  }, [downloadedFilePath]);
+  }, []);
 
   // Auto-install countdown effect
   useEffect(() => {

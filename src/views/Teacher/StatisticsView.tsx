@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { apiFetch, downloadAuthenticatedFile } from '../../lib/api';
 import { Problem, Submission, Contest, ClassGroup, ContestReport } from '../../types';
 import { useNetwork } from '../../context/NetworkContext';
 import { 
@@ -56,10 +57,10 @@ export const StatisticsView: React.FC = () => {
   const fetchData = async () => {
     try {
       const [probRes, subRes, contestRes, classRes] = await Promise.all([
-        fetch(`${serverUrl}/api/problems?role=host`),
-        fetch(`${serverUrl}/api/submissions`),
-        fetch(`${serverUrl}/api/contests?role=host`),
-        fetch(`${serverUrl}/api/classes`)
+        apiFetch(`${serverUrl}/api/problems`),
+        apiFetch(`${serverUrl}/api/submissions`),
+        apiFetch(`${serverUrl}/api/contests`),
+        apiFetch(`${serverUrl}/api/classes`)
       ]);
       if (probRes.ok) setProblems(await probRes.json());
       if (subRes.ok) setSubmissions(await subRes.json());
@@ -79,7 +80,7 @@ export const StatisticsView: React.FC = () => {
   const handleOpenReport = async (contestId: string) => {
     setLoadingReport(true);
     try {
-      const res = await fetch(`${serverUrl}/api/contests/${contestId}/official-report`);
+      const res = await apiFetch(`${serverUrl}/api/contests/${contestId}/official-report`);
       if (res.ok) {
         const data = await res.json();
         setOfficialReportModal(data);
@@ -596,14 +597,15 @@ export const StatisticsView: React.FC = () => {
                     >
                       <FileCheck size={14} /> Tạo Bảng Điểm
                     </button>
-                    <a
-                      href={`${serverUrl}/api/contests/${c.id}/export-official-csv`}
+                    <button
+                      type="button"
+                      onClick={() => downloadAuthenticatedFile(`${serverUrl}/api/contests/${c.id}/export-official-csv`, `Bang_Diem_${c.title}.csv`).catch(error => alert(error.message))}
                       className="btn btn-outline btn-sm"
-                      style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', textDecoration: 'none' }}
+                      style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}
                       title="Xuất trực tiếp file Excel"
                     >
                       <FileSpreadsheet size={14} color="var(--accent-emerald)" /> Excel
-                    </a>
+                    </button>
                   </div>
                 </div>
               );
@@ -635,14 +637,15 @@ export const StatisticsView: React.FC = () => {
               </div>
 
               <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                <a
-                  href={`${serverUrl}/api/contests/${officialReportModal.contestId}/export-official-csv`}
+                <button
+                  type="button"
+                  onClick={() => downloadAuthenticatedFile(`${serverUrl}/api/contests/${officialReportModal.contestId}/export-official-csv`, `Bang_Diem_${officialReportModal.contestTitle}.csv`).catch(error => alert(error.message))}
                   className="btn btn-secondary btn-sm"
-                  style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', fontSize: '0.78rem', textDecoration: 'none' }}
+                  style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', fontSize: '0.78rem' }}
                   title="Xuất bảng điểm ra file Excel / CSV"
                 >
                   <FileSpreadsheet size={14} color="var(--accent-emerald)" /> Xuất Excel
-                </a>
+                </button>
 
                 <button
                   type="button"

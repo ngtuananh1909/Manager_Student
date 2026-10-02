@@ -1,5 +1,6 @@
 const db = require('./db.cjs');
 const judge = require('./judge.cjs');
+const { sanitizeSubmissionForStudent } = require('./serializers.cjs');
 
 class SubmissionQueue {
   constructor() {
@@ -61,14 +62,14 @@ class SubmissionQueue {
 
     // Emit start judging
     if (this.io) {
-      this.io.emit(`submission:${submissionId}:status`, { status: 'JUDGING', message: 'Bắt đầu chấm bài...' });
-      this.io.emit('submission:update', { id: submissionId, status: 'JUDGING' });
+      this.io.to(`user:${sub.userId}`).to(`role:host`).emit(`submission:${submissionId}:status`, { status: 'JUDGING', message: 'Bắt đầu chấm bài...' });
+      this.io.to(`user:${sub.userId}`).to('role:host').emit('submission:update', { id: submissionId, status: 'JUDGING' });
     }
 
     const result = await judge.gradeSubmission(sub, problem, (progress) => {
       if (this.io) {
-        this.io.emit(`submission:${submissionId}:progress`, progress);
-        this.io.emit('submission:progress', { id: submissionId, ...progress });
+        this.io.to(`user:${sub.userId}`).to('role:host').emit(`submission:${submissionId}:progress`, progress);
+        this.io.to(`user:${sub.userId}`).to('role:host').emit('submission:progress', { id: submissionId, ...progress });
       }
     });
 
@@ -88,25 +89,14 @@ class SubmissionQueue {
     this.checkGamification(sub.userId, updated, problem);
 
     // Broadcast results (Sanitize secret inputs/outputs for students)
-    const contest = sub.contestId ? db.getContest(sub.contestId) : null;
-    const hideDetails = contest ? contest.hideTestDetailsForStudents !== false : true;
-    const studentResult = (hideDetails && updated.details) ? {
-      ...updated,
-      details: updated.details.map(d => ({
-        testIndex: d.testIndex,
-        name: d.name,
-        status: d.status,
-        time: d.time,
-        memory: d.memory,
-        scoreEarned: d.scoreEarned,
-        message: d.message
-      }))
-    } : updated;
+    const studentResult = sanitizeSubmissionForStudent(updated);
 
     if (this.io) {
-      this.io.emit(`submission:${submissionId}:result`, studentResult);
-      this.io.emit('submission:finished', updated);
-      this.io.emit('leaderboard:update', db.getLeaderboard());
+      this.io.to(`user:${sub.userId}`).emit(`submission:${submissionId}:result`, studentResult);
+      this.io.to(`user:${sub.userId}`).emit('submission:finished', studentResult);
+      this.io.to('role:host').emit(`submission:${submissionId}:result`, updated);
+      this.io.to('role:host').emit('submission:finished', updated);
+      this.io.to('role:user').to('role:host').emit('leaderboard:update', db.getLeaderboard());
     }
   }
 
@@ -144,7 +134,7 @@ class SubmissionQueue {
       user.badges = Array.from(currentBadges);
       db.save();
       if (this.io) {
-        this.io.emit('badge:unlocked', { userId: user.id, badges: user.badges });
+        this.io.to(`user:${user.id}`).emit('badge:unlocked', { userId: user.id, badges: user.badges });
       }
     }
   }

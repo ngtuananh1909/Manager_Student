@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
+import { apiFetch, downloadAuthenticatedFile } from '../../lib/api';
 import { Contest, Problem, ClassGroup, LeaderboardEntry, TestCase, User } from '../../types';
 import { useNetwork } from '../../context/NetworkContext';
 import { StatementViewer } from '../../components/StatementViewer';
@@ -228,10 +229,10 @@ export const ContestManager: React.FC = () => {
   const fetchInitialData = async () => {
     try {
       const [resContests, resProblems, resClasses, resUsers] = await Promise.all([
-        fetch(`${serverUrl}/api/contests?role=host`),
-        fetch(`${serverUrl}/api/problems?role=host`),
-        fetch(`${serverUrl}/api/classes`),
-        fetch(`${serverUrl}/api/users`)
+        apiFetch(`${serverUrl}/api/contests`),
+        apiFetch(`${serverUrl}/api/problems`),
+        apiFetch(`${serverUrl}/api/classes`),
+        apiFetch(`${serverUrl}/api/users`)
       ]);
 
       if (resContests.ok) setContests(await resContests.json());
@@ -909,7 +910,7 @@ export const ContestManager: React.FC = () => {
         endTime: parseDateSafe(formContest.endTime, Date.now() + 60 * 60 * 1000)
       };
 
-      const res = await fetch(url, {
+      const res = await apiFetch(url, {
         method,
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload)
@@ -922,7 +923,7 @@ export const ContestManager: React.FC = () => {
         // Handle Contest PDF upload / remove
         if (pendingContestPdf && contestId) {
           try {
-            await fetch(`${serverUrl}/api/contests/${contestId}/pdf`, {
+            await apiFetch(`${serverUrl}/api/contests/${contestId}/pdf`, {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify({
@@ -935,7 +936,7 @@ export const ContestManager: React.FC = () => {
           }
         } else if (removeContestPdf && contestId) {
           try {
-            await fetch(`${serverUrl}/api/contests/${contestId}/pdf`, { method: 'DELETE' });
+            await apiFetch(`${serverUrl}/api/contests/${contestId}/pdf`, { method: 'DELETE' });
           } catch (e) {}
         }
 
@@ -967,7 +968,7 @@ export const ContestManager: React.FC = () => {
   const handleDeleteContest = async (id: string, title: string) => {
     if (!confirm(`Bạn có chắc chắn muốn xoá kỳ thi "${title}"?`)) return;
     try {
-      const res = await fetch(`${serverUrl}/api/contests/${id}`, { method: 'DELETE' });
+      const res = await apiFetch(`${serverUrl}/api/contests/${id}`, { method: 'DELETE' });
       if (res.ok) {
         setContests(prev => prev.filter(c => c.id !== id));
       }
@@ -978,7 +979,7 @@ export const ContestManager: React.FC = () => {
 
   const handleToggleStatus = async (c: Contest, newStatus: 'running' | 'ended' | 'upcoming') => {
     try {
-      const res = await fetch(`${serverUrl}/api/contests/${c.id}/toggle-status`, {
+      const res = await apiFetch(`${serverUrl}/api/contests/${c.id}/toggle-status`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ status: newStatus })
@@ -1068,7 +1069,7 @@ export const ContestManager: React.FC = () => {
         testCases: directTestCases
       };
 
-      const res = await fetch(`${serverUrl}/api/problems`, {
+      const res = await apiFetch(`${serverUrl}/api/problems`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(problemData)
@@ -1083,7 +1084,7 @@ export const ContestManager: React.FC = () => {
 
       // If PDF attached for this problem, upload it
       if (directProbPdf) {
-        await fetch(`${serverUrl}/api/problems/${createdProb.id}/pdf`, {
+        await apiFetch(`${serverUrl}/api/problems/${createdProb.id}/pdf`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
@@ -1100,7 +1101,7 @@ export const ContestManager: React.FC = () => {
       // Also if quick-managing contest from card
       if (quickManageContest) {
         const qNext = Array.from(new Set([...(quickManageContest.problemIds || []), createdProb.id]));
-        await fetch(`${serverUrl}/api/contests/${quickManageContest.id}`, {
+        await apiFetch(`${serverUrl}/api/contests/${quickManageContest.id}`, {
           method: 'PUT',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ problemIds: qNext })
@@ -1135,7 +1136,7 @@ export const ContestManager: React.FC = () => {
     setSampleLoading(true);
     setSampleImportMsg('');
     try {
-      const res = await fetch(`${serverUrl}/api/sample-tests`);
+      const res = await apiFetch(`${serverUrl}/api/sample-tests`);
       if (res.ok) setSampleProblems(await res.json());
     } catch (e) {
       console.error(e);
@@ -1148,7 +1149,7 @@ export const ContestManager: React.FC = () => {
     setImportingSample(true);
     setSampleImportMsg('');
     try {
-      const res = await fetch(`${serverUrl}/api/sample-tests/import`, {
+      const res = await apiFetch(`${serverUrl}/api/sample-tests/import`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ folder, importAll })
@@ -1157,7 +1158,7 @@ export const ContestManager: React.FC = () => {
       if (res.ok) {
         setSampleImportMsg(data.message || 'Import thành công!');
         // Refresh problems and auto-select imported problem into contest!
-        const resProbs = await fetch(`${serverUrl}/api/problems?role=host`);
+        const resProbs = await apiFetch(`${serverUrl}/api/problems`);
         if (resProbs.ok) {
           const allProbs: Problem[] = await resProbs.json();
           setProblems(allProbs);
@@ -1173,7 +1174,7 @@ export const ContestManager: React.FC = () => {
 
           if (quickManageContest) {
             const nextP = Array.from(new Set([...(quickManageContest.problemIds || []), ...matchedIds]));
-            await fetch(`${serverUrl}/api/contests/${quickManageContest.id}`, {
+            await apiFetch(`${serverUrl}/api/contests/${quickManageContest.id}`, {
               method: 'PUT',
               headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify({ problemIds: nextP })
@@ -1202,7 +1203,7 @@ export const ContestManager: React.FC = () => {
     if (!tcModalProblem) return;
     setSavingTcList(true);
     try {
-      const res = await fetch(`${serverUrl}/api/problems/${tcModalProblem.id}/testcases`, {
+      const res = await apiFetch(`${serverUrl}/api/problems/${tcModalProblem.id}/testcases`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ testCases: tcList })
@@ -1252,7 +1253,7 @@ export const ContestManager: React.FC = () => {
     setLeaderboardContest(c);
     setLoadingScores(true);
     try {
-      const res = await fetch(`${serverUrl}/api/contests/${c.id}/leaderboard`);
+      const res = await apiFetch(`${serverUrl}/api/contests/${c.id}/leaderboard`);
       if (res.ok) {
         setContestScores(await res.json());
       }
@@ -1266,7 +1267,7 @@ export const ContestManager: React.FC = () => {
   const handleOpenOfficialReport = async (c: Contest) => {
     setLoadingOfficialReport(true);
     try {
-      const res = await fetch(`${serverUrl}/api/contests/${c.id}/official-report`);
+      const res = await apiFetch(`${serverUrl}/api/contests/${c.id}/official-report`);
       if (res.ok) {
         const data = await res.json();
         setOfficialReportModal(data);
@@ -1429,7 +1430,7 @@ export const ContestManager: React.FC = () => {
           <p style={{ fontSize: '0.85rem', maxWidth: '460px', margin: '0 auto 18px auto' }}>
             Tạo kỳ thi mới để học sinh trong phòng máy bắt đầu làm bài, nộp code và theo dõi bảng xếp hạng trực tiếp.
           </p>
-          <button className="btn btn-primary btn-sm" onClick={handleOpenCreateModal}>
+          <button className="btn btn-primary btn-sm" onClick={() => handleOpenCreateModal()}>
             <Plus size={15} /> Tạo Kỳ Thi Đầu Tiên
           </button>
         </div>
@@ -3130,7 +3131,7 @@ export const ContestManager: React.FC = () => {
                             onClick={async () => {
                               if (!confirm(`Gỡ bài "${prob?.title || pId}" khỏi kỳ thi này?`)) return;
                               const updatedProblemIds = quickManageContest.problemIds.filter(id => id !== pId);
-                              await fetch(`${serverUrl}/api/contests/${quickManageContest.id}`, {
+                              await apiFetch(`${serverUrl}/api/contests/${quickManageContest.id}`, {
                                 method: 'PUT',
                                 headers: { 'Content-Type': 'application/json' },
                                 body: JSON.stringify({ problemIds: updatedProblemIds })
@@ -3481,14 +3482,14 @@ export const ContestManager: React.FC = () => {
               </div>
 
               <div style={{ display: 'flex', gap: '8px' }}>
-                <a 
-                  href={pdfViewerModal.url}
-                  download={pdfViewerModal.fileName || 'de_thi'}
+                <button
+                  type="button"
+                  onClick={() => downloadAuthenticatedFile(pdfViewerModal.url.startsWith('http') ? pdfViewerModal.url : `${serverUrl}${pdfViewerModal.url}`, pdfViewerModal.fileName || 'de_thi').catch(error => alert(error.message))}
                   className="btn btn-secondary btn-sm"
-                  style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', textDecoration: 'none' }}
+                  style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}
                 >
                   <Download size={13} /> Tải Về Máy
-                </a>
+                </button>
                 <button className="btn btn-outline btn-sm" onClick={() => setPdfViewerModal(null)}>
                   <X size={15} />
                 </button>
@@ -3500,6 +3501,7 @@ export const ContestManager: React.FC = () => {
                 src={pdfViewerModal.url}
                 fileName={pdfViewerModal.fileName}
                 title={pdfViewerModal.title}
+                serverUrl={serverUrl}
               />
             </div>
           </div>
@@ -3599,14 +3601,15 @@ export const ContestManager: React.FC = () => {
               </div>
 
               <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                <a
-                  href={`${serverUrl}/api/contests/${officialReportModal.contestId}/export-official-csv`}
+                <button
+                  type="button"
+                  onClick={() => downloadAuthenticatedFile(`${serverUrl}/api/contests/${officialReportModal.contestId}/export-official-csv`, `Bang_Diem_${officialReportModal.contestTitle}.csv`).catch(error => alert(error.message))}
                   className="btn btn-secondary btn-sm"
-                  style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', fontSize: '0.78rem', textDecoration: 'none' }}
+                  style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', fontSize: '0.78rem' }}
                   title="Xuất bảng điểm ra file Excel / CSV"
                 >
                   <FileSpreadsheet size={14} color="var(--accent-emerald)" /> Xuất Excel
-                </a>
+                </button>
 
                 <button
                   type="button"
@@ -3765,4 +3768,3 @@ export const ContestManager: React.FC = () => {
     </div>
   );
 };
-

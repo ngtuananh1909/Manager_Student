@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { apiFetch } from '../../lib/api';
 import { Problem } from '../../types';
 import { useNetwork } from '../../context/NetworkContext';
 import { ShieldAlert, RefreshCw, AlertTriangle, CheckCircle, ArrowRight, Eye, X } from 'lucide-react';
@@ -26,7 +27,7 @@ export const PlagiarismView: React.FC = () => {
 
   const fetchProblems = async () => {
     try {
-      const res = await fetch(`${serverUrl}/api/problems?role=host`);
+      const res = await apiFetch(`${serverUrl}/api/problems`);
       if (res.ok) {
         const data: Problem[] = await res.json();
         setProblems(data);
@@ -45,7 +46,7 @@ export const PlagiarismView: React.FC = () => {
     setInspectPair(null);
 
     try {
-      const res = await fetch(`${serverUrl}/api/anticheat/scan/${selectedProblemId}?threshold=${threshold}`);
+      const res = await apiFetch(`${serverUrl}/api/anticheat/scan/${selectedProblemId}?threshold=${threshold}`);
       if (res.ok) {
         const data = await res.json();
         setPairs(data);

@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { apiFetch } from '../../lib/api';
 import { User, ClassGroup, Contest, StudentAttendance, UserExamRecord, AttendanceStatus } from '../../types';
 import { useNetwork } from '../../context/NetworkContext';
 import { 
@@ -106,10 +107,10 @@ export const StudentManager: React.FC = () => {
     try {
       setLoading(true);
       const [resUsers, resClasses, resContests, resOnline] = await Promise.all([
-        fetch(`${serverUrl}/api/users`),
-        fetch(`${serverUrl}/api/classes`),
-        fetch(`${serverUrl}/api/contests`),
-        fetch(`${serverUrl}/api/users/online`)
+        apiFetch(`${serverUrl}/api/users`),
+        apiFetch(`${serverUrl}/api/classes`),
+        apiFetch(`${serverUrl}/api/contests`),
+        apiFetch(`${serverUrl}/api/users/online`)
       ]);
 
       if (resUsers.ok) setUsers(await resUsers.json());
@@ -170,7 +171,7 @@ export const StudentManager: React.FC = () => {
     if (!contestId) return;
     try {
       setLoadingAttendance(true);
-      const res = await fetch(`${serverUrl}/api/contests/${contestId}/attendance`);
+      const res = await apiFetch(`${serverUrl}/api/contests/${contestId}/attendance`);
       if (res.ok) {
         setAttendanceList(await res.json());
       }
@@ -248,7 +249,7 @@ export const StudentManager: React.FC = () => {
       : (singleForm.classId ? [singleForm.classId] : (classes[0]?.id ? [classes[0].id] : []));
 
     try {
-      const res = await fetch(`${serverUrl}/api/users`, {
+      const res = await apiFetch(`${serverUrl}/api/users`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -261,6 +262,11 @@ export const StudentManager: React.FC = () => {
         })
       });
       if (res.ok) {
+        const data = await res.json();
+        if (data.temporaryPassword) {
+          await navigator.clipboard.writeText(`${singleForm.username.trim().toLowerCase()}\t${data.temporaryPassword}`);
+          alert(`Mật khẩu tạm thời đã được sao chép:\n${data.temporaryPassword}\nHọc sinh phải đổi mật khẩu sau khi đăng nhập.`);
+        }
         setShowAddSingleModal(false);
         setSingleForm({ username: '', fullName: '', classId: classes[0]?.id || '', classes: [], password: '123456' });
         loadData();
@@ -291,12 +297,18 @@ export const StudentManager: React.FC = () => {
     }
 
     try {
-      const res = await fetch(`${serverUrl}/api/users/batch`, {
+      const res = await apiFetch(`${serverUrl}/api/users/batch`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ students: list, classId: batchClassId })
       });
       if (res.ok) {
+        const data = await res.json();
+        if (Array.isArray(data.credentials) && data.credentials.length > 0) {
+          const text = data.credentials.map((item: { username: string; temporaryPassword: string }) => `${item.username}\t${item.temporaryPassword}`).join('\n');
+          await navigator.clipboard.writeText(text);
+          alert(`Đã sao chép ${data.credentials.length} tài khoản và mật khẩu tạm thời vào clipboard.`);
+        }
         setShowBatchModal(false);
         loadData();
       } else {
@@ -346,12 +358,18 @@ export const StudentManager: React.FC = () => {
     }
 
     try {
-      const res = await fetch(`${serverUrl}/api/users/batch`, {
+      const res = await apiFetch(`${serverUrl}/api/users/batch`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ students: parsed, classId: batchClassId })
       });
       if (res.ok) {
+        const data = await res.json();
+        if (Array.isArray(data.credentials) && data.credentials.length > 0) {
+          const text = data.credentials.map((item: { username: string; temporaryPassword: string }) => `${item.username}\t${item.temporaryPassword}`).join('\n');
+          await navigator.clipboard.writeText(text);
+          alert(`Đã sao chép ${data.credentials.length} tài khoản và mật khẩu tạm thời vào clipboard.`);
+        }
         setPasteInput('');
         setShowBatchModal(false);
         loadData();
@@ -366,7 +384,7 @@ export const StudentManager: React.FC = () => {
 
   const handleToggleLock = async (user: User) => {
     try {
-      const res = await fetch(`${serverUrl}/api/users/${user.id}/toggle-lock`, { method: 'POST' });
+      const res = await apiFetch(`${serverUrl}/api/users/${user.id}/toggle-lock`, { method: 'POST' });
       if (res.ok) {
         loadData();
       }
@@ -379,13 +397,15 @@ export const StudentManager: React.FC = () => {
     e.preventDefault();
     if (!showPasswordResetModal) return;
     try {
-      const res = await fetch(`${serverUrl}/api/users/${showPasswordResetModal.id}/reset-password`, {
+      const res = await apiFetch(`${serverUrl}/api/users/${showPasswordResetModal.id}/reset-password`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ newPassword: newPasswordInput })
       });
       if (res.ok) {
-        alert(`Đã đặt lại mật khẩu cho ${showPasswordResetModal.username} thành: ${newPasswordInput}`);
+        const data = await res.json();
+        if (data.temporaryPassword) await navigator.clipboard.writeText(data.temporaryPassword);
+        alert(`Mật khẩu tạm thời mới cho ${showPasswordResetModal.username}: ${data.temporaryPassword}\nĐã sao chép vào clipboard.`);
         setShowPasswordResetModal(null);
       }
     } catch (e: any) {
@@ -396,7 +416,7 @@ export const StudentManager: React.FC = () => {
   const handleDeleteUser = async (user: User) => {
     if (!confirm(`Bạn có chắc chắn muốn xóa học sinh "${user.fullName}" (${user.username})?`)) return;
     try {
-      const res = await fetch(`${serverUrl}/api/users/${user.id}`, { method: 'DELETE' });
+      const res = await apiFetch(`${serverUrl}/api/users/${user.id}`, { method: 'DELETE' });
       if (res.ok) {
         loadData();
       }
@@ -409,7 +429,7 @@ export const StudentManager: React.FC = () => {
     setShowPortfolioModal(user);
     setLoadingHistory(true);
     try {
-      const res = await fetch(`${serverUrl}/api/users/${user.id}/history`);
+      const res = await apiFetch(`${serverUrl}/api/users/${user.id}/history`);
       if (res.ok) {
         setStudentHistory(await res.json());
       }
@@ -424,7 +444,7 @@ export const StudentManager: React.FC = () => {
   const handleUpdateStatus = async (userId: string, newStatus: AttendanceStatus, reason?: string) => {
     if (!selectedContestId) return;
     try {
-      const res = await fetch(`${serverUrl}/api/contests/${selectedContestId}/attendance`, {
+      const res = await apiFetch(`${serverUrl}/api/contests/${selectedContestId}/attendance`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ userId, status: newStatus, reason })
@@ -440,7 +460,7 @@ export const StudentManager: React.FC = () => {
   const handleApplyExtraTime = async () => {
     if (!selectedContestId || !extraTimeTarget) return;
     try {
-      const res = await fetch(`${serverUrl}/api/contests/${selectedContestId}/extra-time`, {
+      const res = await apiFetch(`${serverUrl}/api/contests/${selectedContestId}/extra-time`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ userId: extraTimeTarget.userId, extraMinutes: extraMinutesInput })
@@ -458,7 +478,7 @@ export const StudentManager: React.FC = () => {
   const handleReopenContest = async (item: StudentAttendance) => {
     if (!confirm(`Mở lại quyền làm bài thi cho thí sinh "${item.fullName}"?`)) return;
     try {
-      const res = await fetch(`${serverUrl}/api/contests/${selectedContestId}/reopen`, {
+      const res = await apiFetch(`${serverUrl}/api/contests/${selectedContestId}/reopen`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ userId: item.userId })
@@ -476,7 +496,7 @@ export const StudentManager: React.FC = () => {
     const reason = prompt(`Nhập lý do đình chỉ thi đối với thí sinh "${item.fullName}":`, 'Vi phạm quy chế phòng thi');
     if (reason === null) return;
     try {
-      const res = await fetch(`${serverUrl}/api/contests/${selectedContestId}/suspend`, {
+      const res = await apiFetch(`${serverUrl}/api/contests/${selectedContestId}/suspend`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ userId: item.userId, reason })
@@ -506,7 +526,7 @@ export const StudentManager: React.FC = () => {
   const handleSaveCandidates = async () => {
     if (!selectedContestId) return;
     try {
-      const res = await fetch(`${serverUrl}/api/contests/${selectedContestId}/candidates`, {
+      const res = await apiFetch(`${serverUrl}/api/contests/${selectedContestId}/candidates`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ candidateIds: selectedCandidateIds })

@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { apiFetch } from '../lib/api';
 import { useNetwork, NetworkMode } from '../context/NetworkContext';
 import { useAuth } from '../context/AuthContext';
 import { 
@@ -51,13 +52,13 @@ export const LANDiscoveryModal: React.FC<Props> = ({ isOpen, onClose }) => {
       setTempLanUrl(lanUrl);
       setTempInternetUrl(internetUrl);
       scanForServers();
-      fetchDiagnostics();
+      if (role === 'host') fetchDiagnostics();
     }
   }, [isOpen]);
 
   const fetchDiagnostics = async () => {
     try {
-      const res = await fetch(`${serverUrl}/api/diagnostics`);
+      const res = await apiFetch(`${serverUrl}/api/diagnostics`);
       if (res.ok) {
         const data = await res.json();
         if (data.localIps) setHostIps(data.localIps);

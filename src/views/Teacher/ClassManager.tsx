@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { apiFetch } from '../../lib/api';
 import { ClassGroup, User } from '../../types';
 import { useNetwork } from '../../context/NetworkContext';
 import { 
@@ -65,8 +66,8 @@ export const ClassManager: React.FC = () => {
   const fetchData = async () => {
     try {
       const [clsRes, usrRes] = await Promise.all([
-        fetch(`${serverUrl}/api/classes`),
-        fetch(`${serverUrl}/api/users`)
+        apiFetch(`${serverUrl}/api/classes`),
+        apiFetch(`${serverUrl}/api/users`)
       ]);
       if (clsRes.ok) {
         const cList = await clsRes.json();
@@ -93,7 +94,7 @@ export const ClassManager: React.FC = () => {
     if (!newClassName.trim()) return;
 
     try {
-      const res = await fetch(`${serverUrl}/api/classes`, {
+      const res = await apiFetch(`${serverUrl}/api/classes`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -124,7 +125,7 @@ export const ClassManager: React.FC = () => {
     if (!singleStudent.username.trim()) return;
 
     try {
-      const res = await fetch(`${serverUrl}/api/users`, {
+      const res = await apiFetch(`${serverUrl}/api/users`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -137,6 +138,11 @@ export const ClassManager: React.FC = () => {
       });
 
       if (res.ok) {
+        const data = await res.json();
+        if (data.temporaryPassword) {
+          await navigator.clipboard.writeText(`${singleStudent.username.trim().toLowerCase()}\t${data.temporaryPassword}`);
+          alert(`Mật khẩu tạm thời đã được sao chép:\n${data.temporaryPassword}`);
+        }
         setShowAddSingleModal(false);
         setSingleStudent({
           username: '',
@@ -157,7 +163,7 @@ export const ClassManager: React.FC = () => {
 
   // Batch Quick Generate (hs01 -> hs40)
   const handleBatchGenerate = async () => {
-    const list = [];
+    const list: Array<{ username: string; fullName: string; password: string; classId: string }> = [];
     const prefix = (batchForm.prefix || 'hs').trim().toLowerCase();
     const count = Number(batchForm.count) || 35;
     const start = Number(batchForm.startNum) || 1;
@@ -174,7 +180,7 @@ export const ClassManager: React.FC = () => {
     }
 
     try {
-      const res = await fetch(`${serverUrl}/api/users/batch`, {
+      const res = await apiFetch(`${serverUrl}/api/users/batch`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -185,9 +191,13 @@ export const ClassManager: React.FC = () => {
 
       if (res.ok) {
         const data = await res.json();
+        if (Array.isArray(data.credentials) && data.credentials.length > 0) {
+          const text = data.credentials.map((item: { username: string; temporaryPassword: string }) => `${item.username}\t${item.temporaryPassword}`).join('\n');
+          await navigator.clipboard.writeText(text);
+        }
         setShowBatchModal(false);
         fetchData();
-        showNotify(`Đã tự động tạo ${data.count} tài khoản học sinh từ ${prefix}${String(start).padStart(2, '0')} đến ${prefix}${String(start + count - 1).padStart(2, '0')}!`);
+        showNotify(`Đã tạo ${data.count} tài khoản; danh sách mật khẩu tạm thời đã được sao chép.`);
       } else {
         const err = await res.json().catch(() => ({}));
         alert(err.error || 'Lỗi tạo hàng loạt');
@@ -201,7 +211,7 @@ export const ClassManager: React.FC = () => {
   const handlePasteGenerate = async () => {
     if (!pasteText.trim()) return;
     const lines = pasteText.split('\n').map(l => l.trim()).filter(Boolean);
-    const list = [];
+    const list: Array<{ username: string; fullName: string; password: string; classId: string }> = [];
     const classTarget = pasteClassId || (classes[0]?.id || 'cls-1');
 
     lines.forEach((line, idx) => {
@@ -226,7 +236,7 @@ export const ClassManager: React.FC = () => {
     });
 
     try {
-      const res = await fetch(`${serverUrl}/api/users/batch`, {
+      const res = await apiFetch(`${serverUrl}/api/users/batch`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -252,16 +262,18 @@ export const ClassManager: React.FC = () => {
 
   // Reset Student Password
   const handleResetPassword = async (user: User) => {
-    if (!confirm(`Đặt lại mật khẩu của học sinh "${user.fullName} (@${user.username})" về mặc định "123456"?`)) return;
+    if (!confirm(`Tạo mật khẩu tạm thời mới cho học sinh "${user.fullName} (@${user.username})"?`)) return;
 
     try {
-      const res = await fetch(`${serverUrl}/api/users/${user.id}/reset-password`, {
+      const res = await apiFetch(`${serverUrl}/api/users/${user.id}/reset-password`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ newPassword: '123456' })
+        body: JSON.stringify({})
       });
       if (res.ok) {
-        showNotify(`Đã đặt lại mật khẩu cho @${user.username} thành: 123456`);
+        const data = await res.json();
+        if (data.temporaryPassword) await navigator.clipboard.writeText(data.temporaryPassword);
+        alert(`Mật khẩu tạm thời mới: ${data.temporaryPassword}\nĐã sao chép vào clipboard.`);
       }
     } catch (e: any) {
       alert('Lỗi: ' + e.message);
@@ -273,7 +285,7 @@ export const ClassManager: React.FC = () => {
     if (!confirm(`Bạn có chắc chắn muốn xóa tài khoản học sinh "${user.fullName} (@${user.username})"?`)) return;
 
     try {
-      const res = await fetch(`${serverUrl}/api/users/${user.id}`, { method: 'DELETE' });
+      const res = await apiFetch(`${serverUrl}/api/users/${user.id}`, { method: 'DELETE' });
       if (res.ok) {
         setUsers(prev => prev.filter(u => u.id !== user.id));
         showNotify(`Đã xóa tài khoản @${user.username}`);

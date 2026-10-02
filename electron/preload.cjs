@@ -8,7 +8,10 @@ contextBridge.exposeInMainWorld('electronAPI', {
   getLocalIPs: () => ipcRenderer.invoke('get-local-ips'),
   startDiscovery: () => ipcRenderer.invoke('start-discovery'),
   onDiscoveredServer: (callback) => {
-    ipcRenderer.on('server-discovered', (event, data) => callback(data));
+    if (typeof callback !== 'function') return () => {};
+    const listener = (event, data) => callback(data);
+    ipcRenderer.on('server-discovered', listener);
+    return () => ipcRenderer.removeListener('server-discovered', listener);
   },
   setAppRole: (role) => ipcRenderer.invoke('set-app-role', role),
   getAppRole: () => ipcRenderer.invoke('get-app-role'),
@@ -17,9 +20,12 @@ contextBridge.exposeInMainWorld('electronAPI', {
   getAppVersion: () => ipcRenderer.invoke('update:get-version'),
   checkForUpdate: (serverUrl) => ipcRenderer.invoke('update:check', serverUrl),
   downloadUpdate: (serverUrl) => ipcRenderer.invoke('update:download', serverUrl),
-  installUpdate: (filePath) => ipcRenderer.invoke('update:install', filePath),
+  installUpdate: () => ipcRenderer.invoke('update:install'),
   onUpdateProgress: (callback) => {
-    ipcRenderer.on('update:download-progress', (event, data) => callback(data));
+    if (typeof callback !== 'function') return () => {};
+    const listener = (event, data) => callback(data);
+    ipcRenderer.on('update:download-progress', listener);
+    return () => ipcRenderer.removeListener('update:download-progress', listener);
   },
   openUpdatesFolder: () => ipcRenderer.invoke('update:open-folder'),
   publishUpdateFile: () => ipcRenderer.invoke('update:publish-file')
