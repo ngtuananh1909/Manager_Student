@@ -1914,18 +1914,31 @@ function findLatestSignedUpdate() {
     // 1. Kiểm tra file update-manifest.json nếu có
     if (fs.existsSync(manifestPath)) {
       const manifest = JSON.parse(fs.readFileSync(manifestPath, 'utf8'));
-      const installerPath = path.join(updatesDir, manifest.fileName || '');
-      if (fs.existsSync(installerPath)) {
-        const stat = fs.statSync(installerPath);
-        manifest.size = stat.size;
-        return { manifest, installerPath, manifestPath };
+      const rawFileName = manifest.fileName || (manifest.url ? path.basename(manifest.url) : '');
+      const installerPath = rawFileName ? path.join(updatesDir, rawFileName) : '';
+      if (installerPath && fs.existsSync(installerPath)) {
+        try {
+          const stat = fs.statSync(installerPath);
+          if (stat.isFile()) {
+            manifest.fileName = rawFileName;
+            manifest.size = stat.size;
+            return { manifest, installerPath, manifestPath };
+          }
+        } catch {}
       }
     }
 
-    // 2. Dự phòng: Tự động quét tìm file installer .exe trong thư mục updates nếu manifest chưa tạo
+    // 2. Dự phòng: Tự động quét tìm file installer .exe trong thư mục updates nếu manifest chưa tạo hoặc file chỉ định không hợp lệ
     if (fs.existsSync(updatesDir)) {
       const files = fs.readdirSync(updatesDir);
-      const exeFiles = files.filter(f => f.toLowerCase().endsWith('.exe') && !f.endsWith('.tmp') && !f.endsWith('.part'));
+      const exeFiles = files.filter(f => {
+        if (!f.toLowerCase().endsWith('.exe') || f.endsWith('.tmp') || f.endsWith('.part')) return false;
+        try {
+          return fs.statSync(path.join(updatesDir, f)).isFile();
+        } catch {
+          return false;
+        }
+      });
       if (exeFiles.length > 0) {
         // Ưu tiên file có version cao nhất hoặc file mới nhất
         exeFiles.sort((a, b) => {
@@ -1949,6 +1962,7 @@ function findLatestSignedUpdate() {
           appId: 'com.chaucaojudge.lan',
           version,
           fileName: bestExe,
+          url: `updates/${bestExe}`,
           size: stat.size,
           sha256: crypto.createHash('sha256').update(fs.readFileSync(installerPath)).digest('hex'),
           publishedAt: new Date().toISOString()
@@ -2039,16 +2053,23 @@ app.get('/api/update/download', (req, res) => {
     return res.status(404).json({ error: 'Không tìm thấy file cập nhật trên máy chủ.' });
   }
 
-  if (!fs.existsSync(latest.installerPath)) {
-    return res.status(404).json({ error: 'File cập nhật không tồn tại.' });
+  try {
+    const stat = fs.statSync(latest.installerPath);
+    if (!stat.isFile()) {
+      return res.status(404).json({ error: 'File cập nhật không hợp lệ.' });
+    }
+    const fileName = latest.manifest.fileName || path.basename(latest.installerPath);
+    const fileSize = latest.manifest.size || stat.size;
+
+    console.log(`[Auto-Update] Serving installer: ${fileName} (${(fileSize / (1024 * 1024)).toFixed(1)} MB) to ${req.ip}`);
+
+    res.setHeader('Content-Type', 'application/octet-stream');
+    res.setHeader('Content-Disposition', `attachment; filename="${fileName}"`);
+    res.setHeader('Content-Length', fileSize);
+    res.setHeader('X-Update-Version', latest.manifest.version || APP_VERSION);
+  } catch (err) {
+    return res.status(404).json({ error: 'Không thể đọc file cập nhật.' });
   }
-
-  console.log(`[Auto-Update] Serving signed installer: ${latest.manifest.fileName} (${(latest.manifest.size / (1024 * 1024)).toFixed(1)} MB) to ${req.ip}`);
-
-  res.setHeader('Content-Type', 'application/octet-stream');
-  res.setHeader('Content-Disposition', `attachment; filename="${latest.manifest.fileName}"`);
-  res.setHeader('Content-Length', latest.manifest.size);
-  res.setHeader('X-Update-Version', latest.manifest.version);
 
   const stream = fs.createReadStream(latest.installerPath);
   stream.pipe(res);

@@ -493,6 +493,7 @@ ipcMain.handle('update:publish-file', async (event) => {
       appId: 'com.chaucaojudge.lan',
       version,
       fileName,
+      url: `updates/${fileName}`,
       size: stat.size,
       sha256,
       publishedAt: new Date().toISOString()
