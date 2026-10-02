@@ -5,12 +5,11 @@
 ## Current Position
 
 - **Canonical folder:** `/home/tuananh/Documents/Manager_Student`
-- **Branch:** `main`
-- **HEAD:** `c2b8994 feat: signed updater — Ed25519 manifest, verified-path install, IPC hardening`
+- **HEAD:** `2c81bb2 merge: pull origin/main and resolve conflicts`
 - **Current task:** Task 6 — XSS, payload, CORS, rate limits and mass assignment
 - **Status:** `NOT STARTED`
 - **Next exact action:** Begin Task 6 — mark IN PROGRESS in process file, inspect server route validation and HTML rendering, write RED tests for DOCX/HTML XSS, oversized body, privileged field mass-assignment before patching.
-- **Dirty state to preserve:** none; working tree is clean after Task 5 commit.
+- **Dirty state to preserve:** none; working tree clean, merge with origin/main resolved and verified.
 - **Stale source:** `/home/tuananh/.codex/worktrees/security-release/Manager_Student` ends at Task 3. Never merge/copy it back over this folder.
 
 ## Phase Table
@@ -158,6 +157,7 @@ Copy this block for every task/subtask:
 
 - **Status:** COMPLETE
 - **Commit:** `c2b8994 feat: signed updater — Ed25519 manifest, verified-path install, IPC hardening`
+- **Audit fixes:** `a89aaf0 fix(security): add CSP headers and explicit renderer sandbox`
 - **Fresh verification after review fixes:**
   - `npm test` → 45/45 passed, 0 failed.
   - `npm run typecheck` → exit 0.
@@ -172,6 +172,24 @@ Copy this block for every task/subtask:
   - Role restricted to `host`/`student`; port restricted to `4000`.
 - **Known gaps (deferred):** Windows package install/relaunch must be validated on a real Windows machine; signed-update drill documented in Task 8 release gate.
 - **Dirty state:** clean working tree.
+
+### 2026-10-02 09:56 +07 — Merge origin/main (ChauCaoJudge v1.2.4) & Conflict Resolution
+
+- **Status:** COMPLETE
+- **Merge commit:** `2c81bb2 merge: pull origin/main and resolve conflicts`
+- **Conflicts resolved (7 files):**
+  - `electron/main.cjs`: kept HEAD security release (CSP, sandbox, IPC validation, Ed25519 updater).
+  - `server/db.cjs`: preserved mandatory passwordHash check & newId, integrated origin/main classes/grades/candidate aliases.
+  - `server/index.cjs`: kept HEAD auth/RBAC session model and dynamic status logic.
+  - `src/views/LoginView.tsx`: integrated new C++11 header & Key icon wrapper while preserving security minLength/maxLength and register toggle flow.
+  - `src/views/Teacher/ProblemManager.tsx`: adopted origin/main table UI, ensuring `apiFetch` is used instead of bare `fetch`.
+  - `src/views/Teacher/ContestManager.tsx`: integrated user type import and student selection while using `apiFetch` without obsolete `?role=host`.
+  - `src/views/Student/ContestsView.tsx`: preserved `apiFetch` auth model and POST join route with PIN prompt, cleanly integrated single PDF modal button.
+- **Verification after merge:**
+  - `npm test` → 45/45 passed, 0 failed.
+  - `npm run typecheck` → exit 0.
+  - `npm run build` → exit 0.
+- **PR Status:** Branch `security-release-tasks-1-5` updated and pushed to GitHub; PR #2 is clean and mergeable.
 - **Next exact action:** begin Task 6 — XSS, payload, CORS, rate limits and mass assignment.
 
 ### 2026-10-02 09:00 +07 — Canonical-folder reconciliation
