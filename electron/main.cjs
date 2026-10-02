@@ -1,4 +1,4 @@
-const { app, BrowserWindow, ipcMain, dialog, shell } = require('electron');
+const { app, BrowserWindow, ipcMain, dialog, shell, session } = require('electron');
 const path = require('path');
 const fs = require('fs');
 const crypto = require('crypto');
@@ -45,7 +45,8 @@ function createWindow() {
     webPreferences: {
       preload: path.join(__dirname, 'preload.cjs'),
       nodeIntegration: false,
-      contextIsolation: true
+      contextIsolation: true,
+      sandbox: true
     },
     autoHideMenuBar: true
   });
@@ -504,6 +505,35 @@ app.whenReady().then(() => {
       console.error('Could not auto-start local server:', err);
     }
   }
+
+  // Content-Security-Policy — defense-in-depth against XSS
+  const isDev = !app.isPackaged;
+  const cspPolicy = [
+    "default-src 'self'",
+    isDev
+      ? "script-src 'self' http://localhost:5173 http://127.0.0.1:5173"
+      : "script-src 'self'",
+    isDev
+      ? "style-src 'self' 'unsafe-inline' http://localhost:5173 http://127.0.0.1:5173"
+      : "style-src 'self' 'unsafe-inline'",
+    isDev
+      ? "connect-src 'self' http://localhost:* http://127.0.0.1:* ws://localhost:* ws://127.0.0.1:*"
+      : "connect-src 'self' http://localhost:4000 http://127.0.0.1:4000 http://10.0.0.0/8:4000 http://172.16.0.0/12:4000 http://192.168.0.0/16:4000 ws://localhost:4000 ws://127.0.0.1:4000",
+    "img-src 'self' data: blob:",
+    "font-src 'self' data:",
+    "object-src 'none'",
+    "frame-src 'none'",
+    "base-uri 'self'"
+  ].join('; ');
+
+  session.defaultSession.webRequest.onHeadersReceived((details, callback) => {
+    callback({
+      responseHeaders: {
+        ...details.responseHeaders,
+        'Content-Security-Policy': [cspPolicy]
+      }
+    });
+  });
 
   createWindow();
 
