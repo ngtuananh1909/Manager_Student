@@ -16,6 +16,15 @@ export const StatusBar: React.FC = () => {
   const { networkMode, isConnected, latency, serverUrl } = useNetwork();
   const { role, user } = useAuth();
   const [showNetworkModal, setShowNetworkModal] = useState(false);
+  const [appVersion, setAppVersion] = useState<string>('1.2.8');
+
+  useEffect(() => {
+    if ((window as any).electronAPI?.getAppVersion) {
+      (window as any).electronAPI.getAppVersion().then((v: string) => {
+        if (v) setAppVersion(v);
+      });
+    }
+  }, []);
 
   // Extract clean hostname for display
   const displayHost = serverUrl 
@@ -70,7 +79,7 @@ export const StatusBar: React.FC = () => {
 
           {/* App Version */}
           <div className="status-bar-item version-status">
-            <span>v1.2.1</span>
+            <span>v{appVersion}</span>
           </div>
         </div>
       </footer>

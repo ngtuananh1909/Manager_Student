@@ -15,6 +15,7 @@ import {
   ShieldCheck
 } from 'lucide-react';
 import { LANDiscoveryModal } from '../components/LANDiscoveryModal';
+import { resetDeviceRole } from './DeviceRoleSetup';
 
 export const LoginView: React.FC = () => {
   const { login, register } = useAuth();
@@ -291,6 +292,41 @@ export const LoginView: React.FC = () => {
             <SlidersHorizontal size={13} />
             Cấu Hình Kết Nối Mạng (LAN / Internet)
           </button>
+
+          {/* Device Role Badge & Quick Switch */}
+          <div style={{
+            marginTop: '12px',
+            padding: '8px 12px',
+            background: 'rgba(255, 255, 255, 0.03)',
+            border: '1px solid var(--border-subtle)',
+            borderRadius: 'var(--radius-md)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            fontSize: '0.8rem'
+          }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+              <span style={{ color: 'var(--text-muted)' }}>Cấu hình máy:</span>
+              <span style={{ 
+                fontWeight: 700, 
+                color: localStorage.getItem('schooljudge_device_role') === 'host' ? 'var(--primary-light)' : 'var(--accent-emerald)' 
+              }}>
+                {localStorage.getItem('schooljudge_device_role') === 'host' ? '👨‍🏫 Máy Chủ Giáo Viên' : '🎓 Máy Trạm Học Sinh'}
+              </span>
+            </div>
+            <button
+              type="button"
+              className="btn btn-outline btn-sm"
+              style={{ fontSize: '0.72rem', padding: '3px 8px' }}
+              onClick={async () => {
+                if (confirm('Bạn có muốn đổi vai trò máy tính này (Máy Chủ Giáo Viên / Máy Trạm Học Sinh)? Ứng dụng sẽ chuyển về màn hình thiết lập vai trò.')) {
+                  await resetDeviceRole();
+                }
+              }}
+            >
+              Đổi Vai Trò
+            </button>
+          </div>
         </div>
       </div>
 

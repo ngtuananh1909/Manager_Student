@@ -25,8 +25,10 @@ function getDataDir() {
   } catch (e) {}
 
   if (process.env.APPDATA) {
-    const appDataPath = path.join(process.env.APPDATA, 'quan-ly-code', 'data');
+    const appDataPath = path.join(process.env.APPDATA, 'chaucaojudge', 'data');
     if (fs.existsSync(appDataPath)) return appDataPath;
+    const oldAppDataPath = path.join(process.env.APPDATA, 'quan-ly-code', 'data');
+    if (fs.existsSync(oldAppDataPath)) return oldAppDataPath;
   }
   return process.cwd();
 }

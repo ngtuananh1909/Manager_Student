@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { apiFetch } from '../lib/api';
 import { useNetwork, NetworkMode } from '../context/NetworkContext';
 import { useAuth } from '../context/AuthContext';
+import { resetDeviceRole } from '../views/DeviceRoleSetup';
 import { 
   Wifi, 
   Globe, 
@@ -315,13 +316,9 @@ export const LANDiscoveryModal: React.FC<Props> = ({ isOpen, onClose }) => {
             type="button"
             className="btn btn-outline btn-sm"
             style={{ fontSize: '0.74rem', padding: '3px 8px' }}
-            onClick={() => {
-              if (confirm('Bạn có muốn đổi vai trò máy tính này (Máy Chủ / Máy Học Sinh)? Ứng dụng sẽ tải lại.')) {
-                localStorage.removeItem('schooljudge_device_role');
-                if ((window as any).electronAPI?.setAppRole) {
-                  (window as any).electronAPI.setAppRole(null);
-                }
-                window.location.reload();
+            onClick={async () => {
+              if (confirm('Bạn có muốn đổi vai trò máy tính này (Máy Chủ Giáo Viên / Máy Trạm Học Sinh)? Ứng dụng sẽ chuyển về màn hình thiết lập vai trò.')) {
+                await resetDeviceRole();
               }
             }}
           >

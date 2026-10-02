@@ -15,17 +15,57 @@ interface Props {
   onSelectRole: (role: 'host' | 'student') => void;
 }
 
+export async function resetDeviceRole(): Promise<void> {
+  localStorage.removeItem('schooljudge_device_role');
+  localStorage.removeItem('schooljudge_access_token');
+  localStorage.removeItem('schooljudge_user');
+  localStorage.removeItem('schooljudge_lan_url');
+
+  if ((window as any).electronAPI?.setAppRole) {
+    try {
+      await (window as any).electronAPI.setAppRole(null);
+    } catch (e) {
+      console.error('Lỗi khi xóa vai trò trên Electron:', e);
+    }
+  }
+
+  window.dispatchEvent(new Event('schooljudge_device_role_changed'));
+  window.location.reload();
+}
+
+export async function saveDeviceRole(role: 'host' | 'student'): Promise<void> {
+  localStorage.setItem('schooljudge_device_role', role);
+  if (role === 'host') {
+    localStorage.setItem('schooljudge_lan_url', 'http://localhost:4000');
+  } else {
+    const currentUrl = localStorage.getItem('schooljudge_lan_url');
+    if (currentUrl && (currentUrl.includes('localhost') || currentUrl.includes('127.0.0.1'))) {
+      localStorage.removeItem('schooljudge_lan_url');
+    }
+  }
+
+  if ((window as any).electronAPI?.setAppRole) {
+    try {
+      await (window as any).electronAPI.setAppRole(role);
+    } catch (e) {
+      console.error('Lỗi khi lưu vai trò trên Electron:', e);
+    }
+  }
+
+  window.dispatchEvent(new Event('schooljudge_device_role_changed'));
+}
+
 export const DeviceRoleSetup: React.FC<Props> = ({ onSelectRole }) => {
   const { scanForServers } = useNetwork();
   const [selectedRole, setSelectedRole] = useState<'host' | 'student' | null>(null);
+  const [isProcessing, setIsProcessing] = useState(false);
 
-  const handleConfirm = (role: 'host' | 'student') => {
+  const handleConfirm = async (role: 'host' | 'student') => {
+    if (isProcessing) return;
+    setIsProcessing(true);
     setSelectedRole(role);
-    localStorage.setItem('schooljudge_device_role', role);
-    
-    if ((window as any).electronAPI?.setAppRole) {
-      (window as any).electronAPI.setAppRole(role);
-    }
+
+    await saveDeviceRole(role);
 
     if (role === 'student') {
       scanForServers();

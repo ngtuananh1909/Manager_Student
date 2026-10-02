@@ -173,19 +173,8 @@ function validateLanServerUrl(value) {
   } catch {
     fail('INVALID_UPDATE_SERVER', 'Địa chỉ máy chủ cập nhật không hợp lệ.');
   }
-  const hostname = url.hostname.toLowerCase();
-  const isLoopbackV6 = hostname === '[::1]';
-  if (
-    url.protocol !== 'http:' ||
-    url.username ||
-    url.password ||
-    url.port !== '4000' ||
-    url.pathname !== '/' ||
-    url.search ||
-    url.hash ||
-    !(hostname === 'localhost' || isLoopbackV6 || isPrivateIpv4(hostname))
-  ) {
-    fail('INVALID_UPDATE_SERVER', 'Chỉ chấp nhận máy chủ cập nhật HTTP trong mạng LAN ở cổng 4000.');
+  if (url.protocol !== 'http:' && url.protocol !== 'https:') {
+    fail('INVALID_UPDATE_SERVER', 'Giao thức máy chủ cập nhật phải là HTTP hoặc HTTPS.');
   }
   return url.origin;
 }

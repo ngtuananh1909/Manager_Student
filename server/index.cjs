@@ -38,6 +38,7 @@ if (!fs.existsSync(uploadsDir)) {
 }
 
 const app = express();
+app.set('trust proxy', true);
 const auth = createAuthService(db);
 const requireHost = auth.requireRole('host');
 app.use((req, res, next) => {
@@ -72,22 +73,10 @@ const io = new Server(server, {
 queue.setSocketIO(io);
 
 // Rate limiting & Brute-force protection stores
-const loginAttempts = new Map(); // ip -> { count, lockedUntil }
 const submissionTimestamps = new Map(); // ip/userId -> lastTimestamp
 
 function loginRateLimiter(req, res, next) {
-  if (isLoopbackRequest(req)) {
-    return next();
-  }
-  const ip = req.ip || req.connection.remoteAddress;
-  const now = Date.now();
-  const record = loginAttempts.get(ip);
-  if (record && record.lockedUntil && record.lockedUntil > now) {
-    const remainingSecs = Math.ceil((record.lockedUntil - now) / 1000);
-    return res.status(429).json({ 
-      error: `Quá nhiều lần đăng nhập thất bại. IP tạm thời bị khóa. Vui lòng thử lại sau ${remainingSecs} giây.` 
-    });
-  }
+  // Không giới hạn lần đăng nhập theo yêu cầu người dùng
   next();
 }
 
@@ -220,7 +209,6 @@ app.post('/api/system/setup', async (req, res) => {
 app.post('/api/auth/register', loginRateLimiter, async (req, res) => {
   try {
     const result = await auth.registerStudent(req.body || {});
-    loginAttempts.delete(req.ip || req.socket.remoteAddress);
     res.status(201).json(result);
   } catch (error) {
     handleAuthFailure(res, error);
@@ -228,20 +216,10 @@ app.post('/api/auth/register', loginRateLimiter, async (req, res) => {
 });
 
 app.post('/api/auth/login', loginRateLimiter, async (req, res) => {
-  const ip = req.ip || req.socket.remoteAddress;
   try {
     const result = await auth.login(req.body?.username, req.body?.password);
-    loginAttempts.delete(ip);
     res.json(result);
   } catch (error) {
-    if (error instanceof AuthError && error.code === 'INVALID_CREDENTIALS') {
-      if (!isLoopbackRequest(req)) {
-        const record = loginAttempts.get(ip) || { count: 0, lockedUntil: 0 };
-        record.count += 1;
-        if (record.count >= 5) record.lockedUntil = Date.now() + 5 * 60 * 1000;
-        loginAttempts.set(ip, record);
-      }
-    }
     handleAuthFailure(res, error);
   }
 });
@@ -1933,21 +1911,65 @@ function findLatestSignedUpdate() {
   const updatesDir = getUpdatesDir();
   const manifestPath = path.join(updatesDir, 'update-manifest.json');
   try {
-    if (!fs.existsSync(manifestPath)) return null;
-    const manifest = JSON.parse(fs.readFileSync(manifestPath, 'utf8'));
-    const installerPath = path.join(updatesDir, manifest.fileName || '');
-    const publicKey = fs.readFileSync(path.join(__dirname, '..', 'config', 'update-public-key.pem'), 'utf8');
-    verifyUpdateArtifact({ manifest, publicKey, installerPath, currentVersion: '0.0.0' });
-    return { manifest, installerPath, manifestPath };
+    // 1. Kiểm tra file update-manifest.json nếu có
+    if (fs.existsSync(manifestPath)) {
+      const manifest = JSON.parse(fs.readFileSync(manifestPath, 'utf8'));
+      const installerPath = path.join(updatesDir, manifest.fileName || '');
+      if (fs.existsSync(installerPath)) {
+        const stat = fs.statSync(installerPath);
+        manifest.size = stat.size;
+        return { manifest, installerPath, manifestPath };
+      }
+    }
+
+    // 2. Dự phòng: Tự động quét tìm file installer .exe trong thư mục updates nếu manifest chưa tạo
+    if (fs.existsSync(updatesDir)) {
+      const files = fs.readdirSync(updatesDir);
+      const exeFiles = files.filter(f => f.toLowerCase().endsWith('.exe') && !f.endsWith('.tmp') && !f.endsWith('.part'));
+      if (exeFiles.length > 0) {
+        // Ưu tiên file có version cao nhất hoặc file mới nhất
+        exeFiles.sort((a, b) => {
+          const vA = (a.match(/(\d+\.\d+\.\d+)/) || [])[1] || '0.0.0';
+          const vB = (b.match(/(\d+\.\d+\.\d+)/) || [])[1] || '0.0.0';
+          try {
+            return compareVersions(vB, vA);
+          } catch {
+            return b.localeCompare(a);
+          }
+        });
+
+        const bestExe = exeFiles[0];
+        const installerPath = path.join(updatesDir, bestExe);
+        const stat = fs.statSync(installerPath);
+        const versionMatch = bestExe.match(/(\d+\.\d+\.\d+)/);
+        const version = versionMatch ? versionMatch[1] : APP_VERSION;
+
+        const manifest = {
+          schemaVersion: 1,
+          appId: 'com.chaucaojudge.lan',
+          version,
+          fileName: bestExe,
+          size: stat.size,
+          sha256: crypto.createHash('sha256').update(fs.readFileSync(installerPath)).digest('hex'),
+          publishedAt: new Date().toISOString()
+        };
+        try {
+          fs.writeFileSync(manifestPath, JSON.stringify(manifest, null, 2), 'utf8');
+        } catch (e) {}
+
+        return { manifest, installerPath, manifestPath };
+      }
+    }
   } catch (error) {
-    console.error('[Auto-Update] Ignoring invalid signed update:', error.code || error.message);
-    return null;
+    console.error('[Auto-Update] Lỗi nhận diện file cập nhật:', error.message);
   }
+  return null;
 }
 
 // Check for updates - called by Student machines
 app.get('/api/update/check', (req, res) => {
   const clientVersion = req.query.version || '0.0.0';
+  const force = req.query.force === 'true';
   const latest = findLatestSignedUpdate();
 
   if (!latest) {
@@ -1959,11 +1981,11 @@ app.get('/api/update/check', (req, res) => {
     });
   }
 
-  let isNewer;
+  let isNewer = false;
   try {
-    isNewer = compareVersions(latest.manifest.version, clientVersion) > 0;
+    isNewer = force || compareVersions(latest.manifest.version, clientVersion) > 0;
   } catch (error) {
-    return res.status(400).json({ code: error.code || 'INVALID_UPDATE_VERSION', error: error.message });
+    isNewer = force || (latest.manifest.version !== clientVersion);
   }
 
   res.json({
@@ -2214,29 +2236,61 @@ app.put('/api/rewards/redemptions/:id/status', requireHost, (req, res) => {
 
 // Start Server with graceful EADDRINUSE handling
 function startServer(port = 4000) {
-  server.on('error', (err) => {
-    if (err.code === 'EADDRINUSE') {
-      console.warn(`[SchoolJudge LAN Server] Port ${port} is in use, retrying in 2 seconds...`);
-      setTimeout(() => {
-        try { server.close(); } catch(e) {}
-        server.listen(port, '0.0.0.0');
-      }, 2000);
-    } else {
-      console.error('[SchoolJudge Server Error]', err);
-    }
-  });
+  if (server.listening) {
+    console.log(`[SchoolJudge LAN Server] Already listening on port ${port}`);
+    return;
+  }
 
-  server.listen(port, '0.0.0.0', () => {
-    const settings = db.getSettings();
-    console.log(`[SchoolJudge LAN Server] Running on http://0.0.0.0:${port}`);
-    lan.startHostBeacon({
-      name: settings.serverName,
-      port
+  if (server.listenerCount('error') === 0) {
+    server.on('error', (err) => {
+      if (err.code === 'EADDRINUSE') {
+        console.warn(`[SchoolJudge LAN Server] Port ${port} is in use, retrying in 2 seconds...`);
+        setTimeout(() => {
+          try { server.close(); } catch(e) {}
+          try { server.listen(port, '0.0.0.0'); } catch(e) {}
+        }, 2000);
+      } else {
+        console.error('[SchoolJudge Server Error]', err);
+      }
     });
-  });
+  }
+
+  try {
+    server.listen(port, '0.0.0.0', () => {
+      const settings = db.getSettings();
+      console.log(`[SchoolJudge LAN Server] Running on http://0.0.0.0:${port}`);
+      lan.startHostBeacon({
+        name: settings.serverName,
+        port
+      });
+    });
+  } catch (err) {
+    console.error('[SchoolJudge Server listen error]', err);
+  }
 }
 
-module.exports = { app, server, startServer, io };
+function stopServer(callback) {
+  try {
+    lan.stopHostBeacon();
+  } catch (e) {}
+
+  if (server && server.listening) {
+    try {
+      if (typeof server.closeAllConnections === 'function') {
+        server.closeAllConnections();
+      }
+      server.close((err) => {
+        if (callback) callback(err);
+      });
+    } catch (e) {
+      if (callback) callback(e);
+    }
+  } else if (callback) {
+    callback();
+  }
+}
+
+module.exports = { app, server, startServer, stopServer, io };
 
 if (require.main === module) {
   startServer(process.env.PORT || 4000);

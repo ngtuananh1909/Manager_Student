@@ -48,12 +48,23 @@ const MainApp: React.FC = () => {
   useEffect(() => {
     if ((window as any).electronAPI?.getAppRole) {
       (window as any).electronAPI.getAppRole().then((r: any) => {
-        if (r && !deviceRole) {
+        if (r && !localStorage.getItem('schooljudge_device_role')) {
           setDeviceRole(r);
           localStorage.setItem('schooljudge_device_role', r);
         }
       });
     }
+
+    const handleRoleChanged = () => {
+      const saved = (localStorage.getItem('schooljudge_device_role') as any) || null;
+      setDeviceRole(saved);
+    };
+    window.addEventListener('schooljudge_device_role_changed', handleRoleChanged);
+    window.addEventListener('storage', handleRoleChanged);
+    return () => {
+      window.removeEventListener('schooljudge_device_role_changed', handleRoleChanged);
+      window.removeEventListener('storage', handleRoleChanged);
+    };
   }, []);
 
   // Set appropriate default tab when user logs in or role changes

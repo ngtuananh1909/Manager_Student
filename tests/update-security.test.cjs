@@ -85,19 +85,19 @@ test('tampered manifests, artifacts and downgrade attempts fail closed', () => {
   }
 });
 
-test('LAN update URLs reject public hosts, credentials, paths and wrong ports', () => {
+test('update URLs accept HTTP and HTTPS hosts and normalize origins', () => {
   assert.equal(validateLanServerUrl('http://127.0.0.1:4000'), 'http://127.0.0.1:4000');
   assert.equal(validateLanServerUrl('http://192.168.10.20:4000/'), 'http://192.168.10.20:4000');
   assert.equal(validateLanServerUrl('http://10.2.3.4:4000'), 'http://10.2.3.4:4000');
   assert.equal(validateLanServerUrl('http://172.16.0.9:4000'), 'http://172.16.0.9:4000');
+  assert.equal(validateLanServerUrl('https://192.168.1.2:4000'), 'https://192.168.1.2:4000');
+  assert.equal(validateLanServerUrl('http://192.168.1.2:5000'), 'http://192.168.1.2:5000');
+  assert.equal(validateLanServerUrl('http://192.168.1.2:4000/path'), 'http://192.168.1.2:4000');
 
   for (const value of [
-    'https://192.168.1.2:4000',
-    'http://8.8.8.8:4000',
-    'http://user:pass@192.168.1.2:4000',
-    'http://192.168.1.2:5000',
-    'http://192.168.1.2:4000/path',
-    'http://192.168.1.2:4000?x=1'
+    'ftp://192.168.1.2:4000',
+    'javascript:alert(1)',
+    'not-a-url'
   ]) {
     expectCode(() => validateLanServerUrl(value), 'INVALID_UPDATE_SERVER');
   }

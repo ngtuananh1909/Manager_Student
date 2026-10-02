@@ -62,13 +62,44 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       try {
         const res = await apiFetch(`${serverUrl}/api/auth/me`, { signal: AbortSignal.timeout(3000) });
         if (res.ok) {
-          const body = await res.json();
-          if (!cancelled) setUser(body.user || null);
+          const body = await res.json().catch(() => ({}));
+          if (!cancelled) {
+            const resolvedUser = body.user || (body.id ? body : null);
+            setUser(resolvedUser);
+            if (resolvedUser) {
+              try { localStorage.setItem('schooljudge_user', JSON.stringify(resolvedUser)); } catch {}
+            }
+          }
         } else if (!cancelled) {
+          // If server returned 404 (legacy server without /api/auth/me), fall back to cached user in localStorage
+          if (res.status === 404) {
+            try {
+              const saved = localStorage.getItem('schooljudge_user');
+              if (saved) {
+                const parsed = JSON.parse(saved);
+                if (parsed?.id && parsed?.username) {
+                  setUser(parsed);
+                  return;
+                }
+              }
+            } catch {}
+          }
           setUser(null);
         }
       } catch {
-        if (!cancelled) setUser(null);
+        if (!cancelled) {
+          try {
+            const saved = localStorage.getItem('schooljudge_user');
+            if (saved) {
+              const parsed = JSON.parse(saved);
+              if (parsed?.id && parsed?.username) {
+                setUser(parsed);
+                return;
+              }
+            }
+          } catch {}
+          setUser(null);
+        }
       } finally {
         if (!cancelled) setIsLoading(false);
       }
@@ -90,17 +121,64 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     const handleLocked = (data: { message?: string }) => {
       alert(data?.message || 'Tài khoản của bạn đã bị khóa bởi giáo viên');
       clearAccessToken();
+      try { localStorage.removeItem('schooljudge_user'); } catch {}
       setUser(null);
     };
     socket.on('auth:locked', handleLocked);
     return () => { socket.off('auth:locked', handleLocked); };
   }, [socket]);
 
-  const acceptSession = (body: { accessToken?: string; user?: User }) => {
-    if (!body.accessToken || !body.user) return false;
-    setAccessToken(body.accessToken);
-    setUser(body.user);
-    return true;
+  const acceptSession = (body: any) => {
+    if (!body) return false;
+    // Format 1: Modern server response { accessToken: string, user: User }
+    if (body.accessToken && body.user) {
+      setAccessToken(body.accessToken);
+      setUser(body.user);
+      try { localStorage.setItem('schooljudge_user', JSON.stringify(body.user)); } catch {}
+      return true;
+    }
+    // Format 2: Direct user object with accessToken { accessToken: string, ...userFields }
+    if (body.accessToken && body.id && body.username) {
+      setAccessToken(body.accessToken);
+      const userObj: User = {
+        id: body.id,
+        username: body.username,
+        fullName: body.fullName || body.username,
+        role: body.role === 'host' ? 'host' : 'user',
+        classId: body.classId || '',
+        classes: body.classes || (body.classId ? [body.classId] : []),
+        points: body.points || 0,
+        streak: body.streak || 0,
+        badges: body.badges || [],
+        isLocked: !!body.isLocked,
+        mustChangePassword: !!body.mustChangePassword
+      };
+      setUser(userObj);
+      try { localStorage.setItem('schooljudge_user', JSON.stringify(userObj)); } catch {}
+      return true;
+    }
+    // Format 3: Legacy server response: body IS the user object directly { id, username, role, ... }
+    if (body.id && body.username && (body.role || body.classId !== undefined)) {
+      const token = `legacy_${body.id}_${Date.now()}`;
+      setAccessToken(token);
+      const userObj: User = {
+        id: body.id,
+        username: body.username,
+        fullName: body.fullName || body.username,
+        role: body.role === 'host' ? 'host' : 'user',
+        classId: body.classId || '',
+        classes: body.classes || (body.classId ? [body.classId] : []),
+        points: body.points || 0,
+        streak: body.streak || 0,
+        badges: body.badges || [],
+        isLocked: !!body.isLocked,
+        mustChangePassword: !!body.mustChangePassword
+      };
+      setUser(userObj);
+      try { localStorage.setItem('schooljudge_user', JSON.stringify(userObj)); } catch {}
+      return true;
+    }
+    return false;
   };
 
   const setupFirstAdmin: AuthContextType['setupFirstAdmin'] = async data => {
@@ -110,8 +188,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(data)
       });
-      const body = await res.json();
-      if (res.ok && body.success && acceptSession(body)) {
+      const body = await res.json().catch(() => ({}));
+      if (res.ok && (body.success || body.user || body.id) && acceptSession(body)) {
         setIsFirstRun(false);
         return { success: true };
       }
@@ -128,7 +206,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ username, password })
       });
-      const body = await res.json();
+      const body = await res.json().catch(() => ({}));
       if (res.ok && acceptSession(body)) return { success: true };
       return { success: false, error: body.error || 'Sai tên đăng nhập hoặc mật khẩu' };
     } catch (error) {
@@ -143,7 +221,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(data)
       });
-      const body = await res.json();
+      const body = await res.json().catch(() => ({}));
       if (res.ok && acceptSession(body)) return { success: true };
       return { success: false, error: body.error || 'Không thể tạo tài khoản' };
     } catch (error) {
@@ -158,6 +236,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       // Local logout still completes if the server is unavailable.
     } finally {
       clearAccessToken();
+      try { localStorage.removeItem('schooljudge_user'); } catch {}
       setUser(null);
     }
   };
