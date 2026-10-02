@@ -516,7 +516,7 @@ app.whenReady().then(() => {
     isDev
       ? "style-src 'self' 'unsafe-inline' http://localhost:5173 http://127.0.0.1:5173 https://fonts.googleapis.com"
       : "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
-    "connect-src 'self' http://localhost:* http://127.0.0.1:* ws://localhost:* ws://127.0.0.1:* http://*:4000 ws://*:4000 https: wss:",
+    "connect-src 'self' http: https: ws: wss:",
     "img-src 'self' data: blob:",
     "font-src 'self' data: https://fonts.gstatic.com",
     "worker-src 'self' blob:",

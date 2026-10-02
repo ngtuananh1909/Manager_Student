@@ -107,7 +107,9 @@ const MainApp: React.FC = () => {
               </ErrorBoundary>
             )}
             {activeTab === 'problem-detail' && selectedProblem && (
-              <ProblemDetail problem={selectedProblem} onBack={handleBackToProblems} />
+              <ErrorBoundary fallbackTitle="Đã xảy ra sự cố khi mở đề bài">
+                <ProblemDetail problem={selectedProblem} onBack={handleBackToProblems} />
+              </ErrorBoundary>
             )}
             {activeTab === 'leaderboard' && <LeaderboardView />}
             {activeTab === 'submissions' && <SubmissionsHistory />}
