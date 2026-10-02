@@ -81,7 +81,9 @@ export const ContestManager: React.FC = () => {
       preventTabSwitch: true,
       maxTabViolations: 3,
       preventCopyPaste: true
-    }
+    },
+    memoryLimit: 256,
+    category: 'regular'
   });
 
   // Contest-Level PDF Attachment State
@@ -394,7 +396,9 @@ export const ContestManager: React.FC = () => {
         preventTabSwitch: true,
         maxTabViolations: 3,
         preventCopyPaste: true
-      }
+      },
+      memoryLimit: 256,
+      category: 'regular'
     });
     setPendingContestPdf(null);
     setRemoveContestPdf(false);
@@ -438,7 +442,9 @@ export const ContestManager: React.FC = () => {
       endTime: formatDT(c.endTime),
       hideTestDetailsForStudents: c.hideTestDetailsForStudents ?? true,
       requireFreopen: c.requireFreopen ?? false,
-      ipWhitelist: c.ipWhitelist || ''
+      ipWhitelist: c.ipWhitelist || '',
+      memoryLimit: c.memoryLimit || 256,
+      category: c.category || 'regular'
     });
     setPendingContestPdf(null);
     setRemoveContestPdf(false);
@@ -851,6 +857,13 @@ export const ContestManager: React.FC = () => {
     const currentSum = importedFolderProblems.reduce((s, p) => s + (Number(p.points) || 0), 0);
     if (currentSum !== contestTotal) {
       alert(`❌ Không thể tạo kỳ thi:\nTổng điểm các bài (${currentSum}) chưa bằng tổng điểm kỳ thi (${contestTotal}).\n${currentSum < contestTotal ? `Còn thiếu: ${contestTotal - currentSum} điểm` : `Thừa: ${currentSum - contestTotal} điểm`}.\n\nVui lòng điều chỉnh điểm các bài hoặc bấm "Tự động chia đều điểm"!`);
+      return;
+    }
+
+    // Validate RAM Limit (Rules 58-60: 240 MB - 272 MB, default 256 MB)
+    const memLimit = Number(formContest.memoryLimit) || 256;
+    if (memLimit < 240 || memLimit > 272) {
+      alert('❌ Giới hạn RAM của kỳ thi phải nằm trong khoảng từ 240 MB đến 272 MB (mặc định 256 MB)');
       return;
     }
 
@@ -2832,7 +2845,45 @@ export const ContestManager: React.FC = () => {
 
               {/* 7. Grading & Anti-Cheat Settings */}
               <div style={{ background: 'var(--bg-surface-elevated)', borderRadius: 'var(--radius-md)', padding: '14px', display: 'flex', flexDirection: 'column', gap: '12px' }}>
-                <div style={{ fontSize: '0.84rem', fontWeight: 700 }}>HÌNH THỨC CHẤM & BẢO MẬT PHÒNG THI</div>
+                <div style={{ fontSize: '0.84rem', fontWeight: 700 }}>HÌNH THỨC CHẤM, PHÂN LOẠI & RAM KỲ THI</div>
+
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+                  <div>
+                    <label style={{ fontSize: '0.78rem', color: 'var(--text-secondary)', display: 'block', marginBottom: '4px' }}>
+                      Phân loại kỳ thi:
+                    </label>
+                    <select
+                      className="input-field"
+                      value={formContest.category || 'regular'}
+                      onChange={e => setFormContest({ ...formContest, category: e.target.value as any })}
+                    >
+                      <option value="regular">Kiểm tra thường xuyên</option>
+                      <option value="midterm">Giữa kỳ</option>
+                      <option value="final">Cuối kỳ</option>
+                      <option value="practice">Luyện tập</option>
+                      <option value="olympic">Olympic</option>
+                      <option value="hsg">Học sinh giỏi (HSG)</option>
+                      <option value="other">Khác</option>
+                    </select>
+                  </div>
+
+                  <div>
+                    <label style={{ fontSize: '0.78rem', color: 'var(--text-secondary)', display: 'block', marginBottom: '4px' }}>
+                      Cấu hình RAM kỳ thi (240MB - 272MB):
+                    </label>
+                    <select
+                      className="input-field"
+                      value={formContest.memoryLimit || 256}
+                      onChange={e => setFormContest({ ...formContest, memoryLimit: Number(e.target.value) })}
+                    >
+                      {[240, 244, 248, 252, 256, 260, 264, 268, 272].map(mb => (
+                        <option key={mb} value={mb}>
+                          {mb} MB {mb === 256 ? '(Mặc định chuẩn)' : ''}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
 
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
                   <div>

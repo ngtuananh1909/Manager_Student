@@ -63,7 +63,8 @@ test('safeUser never exposes passwordHash', async () => {
     isLocked: false,
     mustChangePassword: false,
     streak: 0,
-    badges: []
+    badges: [],
+    points: 0
   });
 });
 
@@ -135,4 +136,17 @@ test('opaque sessions expire after the configured absolute lifetime', async () =
   assert.equal(auth.resolveAccessToken(loggedIn.accessToken).username, 'student');
   now = 1_501;
   assert.equal(auth.resolveAccessToken(loggedIn.accessToken), null);
+});
+
+test('hashPassword accepts passwords under 10 characters', async () => {
+  const hash123 = await hashPassword('123');
+  assert.match(hash123, /^\$argon2id\$/);
+
+  const hash123456 = await hashPassword('123456');
+  assert.match(hash123456, /^\$argon2id\$/);
+
+  await assert.rejects(
+    () => hashPassword(''),
+    error => error instanceof AuthError && error.code === 'INVALID_PASSWORD'
+  );
 });

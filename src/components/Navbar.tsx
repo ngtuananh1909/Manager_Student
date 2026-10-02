@@ -16,7 +16,8 @@ import {
   School, 
   Activity,
   Layers,
-  Users
+  Users,
+  Gift
 } from 'lucide-react';
 
 interface Props {
@@ -127,7 +128,7 @@ export const Navbar: React.FC<Props> = ({ activeTab, setActiveTab }) => {
                 className={`nav-tab-btn ${activeTab === 'badges' ? 'active' : ''}`}
                 onClick={() => setActiveTab('badges')}
               >
-                <Sparkles size={14} /> Huy Hiệu
+                <Gift size={14} /> Thành Tựu & Quà
               </button>
             </>
           ) : (
@@ -179,6 +180,12 @@ export const Navbar: React.FC<Props> = ({ activeTab, setActiveTab }) => {
                 onClick={() => setActiveTab('statistics')}
               >
                 <BarChart3 size={14} /> Thống Kê
+              </button>
+              <button 
+                className={`nav-tab-btn ${activeTab === 'achievements-manage' ? 'active' : ''}`}
+                onClick={() => setActiveTab('achievements-manage')}
+              >
+                <Gift size={14} /> Thành Tựu & Quà
               </button>
               <button 
                 className={`nav-tab-btn ${activeTab === 'settings' ? 'active' : ''}`}

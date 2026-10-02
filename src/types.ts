@@ -127,16 +127,27 @@ export interface VirtualSession {
 
 export type ScopeType = 'ALL' | 'GRADE' | 'CLASS' | 'STUDENT';
 
+export type ExamCategory = 
+  | 'regular'     // Kiểm tra thường xuyên / 15 phút
+  | 'midterm'     // Giữa kỳ
+  | 'final'       // Cuối kỳ / Học kỳ
+  | 'practice'    // Luyện tập
+  | 'olympic'     // Olympic Tin học
+  | 'hsg'         // Học sinh giỏi
+  | 'other';      // Khác
+
 export interface Contest {
   id: string;
   title: string;
   description: string;
   mode: 'offline' | 'online'; // 'offline' = Mạng LAN phòng máy (Không cần Internet); 'online' = Trực tuyến qua Internet
+  category?: ExamCategory | string; // Phân loại kỳ thi
   scopeType?: ScopeType;      // 'ALL' (Toàn trường) | 'GRADE' (Theo khối) | 'CLASS' (Theo lớp) | 'STUDENT' (Chỉ định học sinh)
   targetGrades?: number[];    // Danh sách khối áp dụng (vd: [6, 7])
   targetClasses?: string[];   // Danh sách ID/Tên lớp áp dụng
   targetStudents?: string[];  // Danh sách ID học sinh áp dụng
   totalScore?: number;        // Tổng điểm kỳ thi (mặc định 100, có thể cấu hình 10, 50...)
+  memoryLimit?: number;       // Giới hạn RAM (MB), mặc định 256MB, hợp lệ từ 240MB -> 272MB
   classIds: string[];         // Lớp được tham gia ([] = tất cả, giữ đồng bộ với targetClasses)
   problemIds: string[];       // Danh sách ID/Code bài tập trong đề thi
   startTime: string;          // ISO string
@@ -170,10 +181,77 @@ export interface User {
   role: Role;
   classId: string;            // Lớp chính (backward compatibility)
   classes?: string[];         // Danh sách tất cả các lớp/nhóm mà học sinh tham gia (N:N)
+  points?: number;            // Điểm tích lũy thành tích để đổi quà
   streak?: number;
   badges?: string[];
   isLocked?: boolean;
   mustChangePassword?: boolean;
+}
+
+export type AchievementRarity = 'COMMON' | 'UNCOMMON' | 'RARE' | 'EPIC' | 'LEGENDARY';
+
+export type AchievementConditionType = 
+  | 'FIRST_SUBMISSION'
+  | 'FIRST_AC'
+  | 'AC_COUNT'
+  | 'SUBMISSION_COUNT'
+  | 'CONTEST_COUNT'
+  | 'PERFECT_SCORE'
+  | 'STREAK'
+  | 'SOLVE_COUNT'
+  | 'FAST_SOLVE'
+  | 'PARTICIPATION'
+  | 'CUSTOM';
+
+export interface Achievement {
+  id: string;
+  code: string;
+  name: string;
+  description: string;
+  icon: string;               // Emoji hoặc Lucide icon
+  category: 'BEGINNER' | 'PROBLEM_SOLVING' | 'CONTEST' | 'STREAK' | 'SPEED' | 'ACCURACY' | 'DEDICATION' | 'SPECIAL' | 'MASTERY';
+  conditionType: AchievementConditionType;
+  conditionValue: number;
+  points: number;             // Điểm thưởng khi đạt được
+  rarity: AchievementRarity;
+  isActive: boolean;
+  rewardId?: string;          // Tùy chọn liên kết với phần thưởng cụ thể
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+export interface StudentAchievement {
+  id: string;
+  studentId: string;
+  achievementId: string;
+  awardedAt: string;
+}
+
+export interface Reward {
+  id: string;
+  name: string;
+  description: string;
+  icon: string;               // Emoji (vd: 🥤, 🍪, 🖊️, 📚, 🍫, 🎒)
+  image?: string;
+  pointsRequired: number;     // Số điểm cần để đổi
+  stock: number;              // Số lượng còn trong kho (>= 0)
+  isActive: boolean;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+export interface RewardRedemption {
+  id: string;
+  studentId: string;
+  studentName: string;
+  rewardId: string;
+  rewardName: string;
+  rewardIcon: string;
+  pointsSpent: number;
+  requestedAt: string;
+  redeemedAt?: string;
+  processedAt?: string;
+  status: 'PENDING' | 'APPROVED' | 'CLAIMED' | 'REJECTED' | 'FULFILLED' | 'CANCELLED';
 }
 
 export type AttendanceStatus = 'present' | 'absent_excused' | 'absent_unexcused' | 'submitted' | 'suspended';
