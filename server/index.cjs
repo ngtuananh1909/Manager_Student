@@ -1709,17 +1709,17 @@ app.get('/api/users', requireHost, (req, res) => {
 
 app.post('/api/users', requireHost, async (req, res) => {
   try {
-    const temporaryPassword = generateTemporaryPassword();
-    const passwordHash = await hashPassword(temporaryPassword);
+    const rawPassword = req.body?.password || req.body?.temporaryPassword || '123456';
     const user = db.createUser({
       username: req.body?.username,
       fullName: req.body?.fullName,
       role: 'user',
       classId: req.body?.classId,
-      passwordHash,
-      mustChangePassword: true
+      classes: req.body?.classes,
+      passwordHash: rawPassword,
+      mustChangePassword: false
     });
-    res.status(201).json({ user: safeUser(user), temporaryPassword });
+    res.status(201).json({ user: safeUser(user), password: rawPassword, temporaryPassword: rawPassword });
   } catch (error) {
     handleAuthFailure(res, error);
   }
@@ -1727,7 +1727,7 @@ app.post('/api/users', requireHost, async (req, res) => {
 
 // BATCH CREATE STUDENTS
 app.post('/api/users/batch', requireHost, async (req, res) => {
-  const { students, classId } = req.body;
+  const { students, classId, defaultPassword } = req.body;
   if (!Array.isArray(students) || students.length === 0) {
     return res.status(400).json({ error: 'Danh sách học sinh không hợp lệ' });
   }
@@ -1742,18 +1742,18 @@ app.post('/api/users/batch', requireHost, async (req, res) => {
 
     let user = existingUsers.find(u => u.username === cleanUser);
     if (!user) {
-      const temporaryPassword = generateTemporaryPassword();
-      const passwordHash = await hashPassword(temporaryPassword);
+      const rawPassword = s.password || defaultPassword || '123456';
       user = db.createUser({
         username: cleanUser,
-        passwordHash,
+        passwordHash: rawPassword,
         fullName: s.fullName || cleanUser,
         role: 'user',
         classId: s.classId || classId || (db.getClasses()[0]?.id || 'cls-1'),
-        mustChangePassword: true
+        classes: s.classes,
+        mustChangePassword: false
       });
       created.push(safeUser(user));
-      credentials.push({ username: user.username, temporaryPassword });
+      credentials.push({ username: user.username, password: rawPassword, temporaryPassword: rawPassword });
       existingUsers.push(user);
     }
   }
@@ -1763,12 +1763,11 @@ app.post('/api/users/batch', requireHost, async (req, res) => {
 
 // RESET STUDENT PASSWORD
 app.put('/api/users/:id/reset-password', requireHost, async (req, res) => {
-  const temporaryPassword = generateTemporaryPassword();
-  const passwordHash = await hashPassword(temporaryPassword);
-  const user = db.setUserPasswordHash(req.params.id, passwordHash, true);
+  const newPassword = req.body?.newPassword || req.body?.password || '123456';
+  const user = db.setUserPasswordHash(req.params.id, newPassword, false);
   if (!user) return res.status(404).json({ error: 'Không tìm thấy người dùng' });
   auth.revokeUserSessions(user.id);
-  res.json({ success: true, message: 'Đã đặt lại mật khẩu thành công', user: safeUser(user), temporaryPassword });
+  res.json({ success: true, message: 'Đã đặt lại mật khẩu thành công', user: safeUser(user), password: newPassword, temporaryPassword: newPassword });
 });
 
 // ONLINE USERS

@@ -235,15 +235,61 @@ class JudgeEngine {
     const memBytes = Math.min(memoryLimitMb * 1024 * 1024, DOCKER_MEMORY_BYTES);
     const codeName = problemCode ? problemCode.trim() : '';
 
-    // Write .inp file for freopen support (inside per-test workspace)
-    const inpFile = codeName ? `${codeName.toLowerCase()}.inp` : null;
-    const outFile = codeName ? `${codeName.toLowerCase()}.out` : null;
-    if (inpFile) {
-      try { fs.writeFileSync(path.join(subFolder, inpFile), inputData, 'utf8'); } catch (e) {}
+    // Collect candidate problem/task names for file I/O (.inp / .out)
+    const candidateNames = new Set();
+    if (codeName) {
+      candidateNames.add(codeName);
+      candidateNames.add(codeName.toLowerCase());
+      candidateNames.add(codeName.toUpperCase());
     }
-    if (outFile) {
-      const outP = path.join(subFolder, outFile);
-      try { if (fs.existsSync(outP)) fs.unlinkSync(outP); } catch (e) {}
+
+    // Inspect solution.cpp in subFolder to discover any defined TASK or freopen target
+    try {
+      const srcPath = path.join(subFolder, 'solution.cpp');
+      if (fs.existsSync(srcPath)) {
+        const srcContent = fs.readFileSync(srcPath, 'utf8');
+        const taskMatch = srcContent.match(/#define\s+TASK\s+["']([^"'\\]+)["']/i);
+        if (taskMatch && taskMatch[1]) {
+          candidateNames.add(taskMatch[1]);
+          candidateNames.add(taskMatch[1].toLowerCase());
+          candidateNames.add(taskMatch[1].toUpperCase());
+        }
+        const freopenMatches = srcContent.matchAll(/freopen\s*\(\s*["']([^"'\\]+)\.inp["']/gi);
+        for (const fm of freopenMatches) {
+          if (fm && fm[1]) {
+            candidateNames.add(fm[1]);
+            candidateNames.add(fm[1].toLowerCase());
+            candidateNames.add(fm[1].toUpperCase());
+          }
+        }
+      }
+    } catch (e) {}
+
+    // Clean up any stale .out files in subFolder before running
+    try {
+      const files = fs.readdirSync(subFolder);
+      for (const f of files) {
+        if (f.toLowerCase().endsWith('.out')) {
+          try { fs.unlinkSync(path.join(subFolder, f)); } catch (e) {}
+        }
+      }
+    } catch (e) {}
+
+    // Write .inp files for all candidate names and '.inp'
+    const createdInpPaths = [];
+    const writeInp = (filename) => {
+      try {
+        const p = path.join(subFolder, filename);
+        fs.writeFileSync(p, inputData, 'utf8');
+        createdInpPaths.push(p);
+      } catch (e) {}
+    };
+
+    writeInp('.inp');
+    writeInp('.INP');
+    for (const name of candidateNames) {
+      writeInp(`${name}.inp`);
+      writeInp(`${name}.INP`);
     }
 
     const runArgs = [
@@ -302,29 +348,44 @@ class JudgeEngine {
         clearTimeout(timer);
         const durationMs = Math.max(1, Number((process.hrtime.bigint() - startTime) / 1000000n));
 
-        // Read freopen .out file if present
+        // Read freopen .out file if present (check all candidate files or any file ending in .out)
         let effectiveOutput = stdout;
         let foundOutFile = false;
-        if (outFile) {
-          try {
-            const outPath = path.join(subFolder, outFile);
-            if (fs.existsSync(outPath)) {
-              const fc = fs.readFileSync(outPath, 'utf8');
-              if (fc.length > 0 || !effectiveOutput.trim()) effectiveOutput = fc;
-              foundOutFile = true;
-            }
-          } catch (e) {}
-        }
 
-        // Cleanup inp/out files (leave binary for subsequent tests)
-        if (inpFile) try { fs.unlinkSync(path.join(subFolder, inpFile)); } catch (e) {}
-        if (outFile) try { fs.unlinkSync(path.join(subFolder, outFile)); } catch (e) {}
+        try {
+          const files = fs.readdirSync(subFolder);
+          const outFiles = files.filter(f => f.toLowerCase().endsWith('.out'));
+          for (const ofile of outFiles) {
+            const outPath = path.join(subFolder, ofile);
+            if (fs.existsSync(outPath) && fs.statSync(outPath).isFile()) {
+              const fc = fs.readFileSync(outPath, 'utf8');
+              foundOutFile = true;
+              if (fc.length > 0 || !effectiveOutput.trim()) {
+                effectiveOutput = fc;
+                break;
+              }
+            }
+          }
+        } catch (e) {}
+
+        // Cleanup all created inp and generated out files
+        for (const p of createdInpPaths) {
+          try { if (fs.existsSync(p)) fs.unlinkSync(p); } catch (e) {}
+        }
+        try {
+          const files = fs.readdirSync(subFolder);
+          for (const f of files) {
+            if (f.toLowerCase().endsWith('.out') || f.toLowerCase().endsWith('.inp') || f === '.inp' || f === '.out') {
+              try { fs.unlinkSync(path.join(subFolder, f)); } catch (e) {}
+            }
+          }
+        } catch (e) {}
 
         // Strict freopen check
         if (requireFreopen && !foundOutFile) {
           return resolve({
             status: 'WA', time: durationMs, memory: 0, output: effectiveOutput,
-            message: `Quy chế thi bắt buộc dùng freopen. Không tìm thấy tệp đầu ra (${outFile || '.out'}).`
+            message: `Quy chế thi bắt buộc dùng freopen. Không tìm thấy tệp đầu ra (.out).`
           });
         }
 
@@ -534,8 +595,13 @@ class JudgeEngine {
 
     let targetCode = problemCode ? problemCode.trim() : '';
     if (!targetCode && code) {
-      const m = code.match(/freopen\s*\(\s*["']([^"'\\]+)\.inp["']/i);
-      if (m) targetCode = m[1];
+      const taskMatch = code.match(/#define\s+TASK\s+["']([^"'\\]+)["']/i);
+      if (taskMatch && taskMatch[1]) {
+        targetCode = taskMatch[1];
+      } else {
+        const m = code.match(/freopen\s*\(\s*["']([^"'\\]+)\.inp["']/i);
+        if (m) targetCode = m[1];
+      }
     }
 
     const result = await this.runSingleTest(

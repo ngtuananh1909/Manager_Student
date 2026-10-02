@@ -263,10 +263,9 @@ export const StudentManager: React.FC = () => {
       });
       if (res.ok) {
         const data = await res.json();
-        if (data.temporaryPassword) {
-          await navigator.clipboard.writeText(`${singleForm.username.trim().toLowerCase()}\t${data.temporaryPassword}`);
-          alert(`Mật khẩu tạm thời đã được sao chép:\n${data.temporaryPassword}\nHọc sinh phải đổi mật khẩu sau khi đăng nhập.`);
-        }
+        const finalPwd = data.password || data.temporaryPassword || singleForm.password;
+        await navigator.clipboard.writeText(`${singleForm.username.trim().toLowerCase()}\t${finalPwd}`);
+        alert(`Tạo thành công tài khoản: ${singleForm.username.trim().toLowerCase()}\nMật khẩu: ${finalPwd}\n(Đã sao chép vào clipboard)`);
         setShowAddSingleModal(false);
         setSingleForm({ username: '', fullName: '', classId: classes[0]?.id || '', classes: [], password: '123456' });
         loadData();
@@ -305,9 +304,9 @@ export const StudentManager: React.FC = () => {
       if (res.ok) {
         const data = await res.json();
         if (Array.isArray(data.credentials) && data.credentials.length > 0) {
-          const text = data.credentials.map((item: { username: string; temporaryPassword: string }) => `${item.username}\t${item.temporaryPassword}`).join('\n');
+          const text = data.credentials.map((item: any) => `${item.username}\t${item.password || item.temporaryPassword}`).join('\n');
           await navigator.clipboard.writeText(text);
-          alert(`Đã sao chép ${data.credentials.length} tài khoản và mật khẩu tạm thời vào clipboard.`);
+          alert(`Đã tạo và sao chép ${data.credentials.length} tài khoản vào clipboard.`);
         }
         setShowBatchModal(false);
         loadData();
@@ -366,9 +365,9 @@ export const StudentManager: React.FC = () => {
       if (res.ok) {
         const data = await res.json();
         if (Array.isArray(data.credentials) && data.credentials.length > 0) {
-          const text = data.credentials.map((item: { username: string; temporaryPassword: string }) => `${item.username}\t${item.temporaryPassword}`).join('\n');
+          const text = data.credentials.map((item: any) => `${item.username}\t${item.password || item.temporaryPassword}`).join('\n');
           await navigator.clipboard.writeText(text);
-          alert(`Đã sao chép ${data.credentials.length} tài khoản và mật khẩu tạm thời vào clipboard.`);
+          alert(`Đã tạo và sao chép ${data.credentials.length} tài khoản vào clipboard.`);
         }
         setPasteInput('');
         setShowBatchModal(false);
@@ -404,8 +403,9 @@ export const StudentManager: React.FC = () => {
       });
       if (res.ok) {
         const data = await res.json();
-        if (data.temporaryPassword) await navigator.clipboard.writeText(data.temporaryPassword);
-        alert(`Mật khẩu tạm thời mới cho ${showPasswordResetModal.username}: ${data.temporaryPassword}\nĐã sao chép vào clipboard.`);
+        const finalPwd = data.password || data.temporaryPassword || newPasswordInput;
+        await navigator.clipboard.writeText(finalPwd);
+        alert(`Mật khẩu mới cho ${showPasswordResetModal.username}: ${finalPwd}\n(Đã sao chép vào clipboard)`);
         setShowPasswordResetModal(null);
       }
     } catch (e: any) {
