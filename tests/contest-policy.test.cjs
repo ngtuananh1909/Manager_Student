@@ -114,3 +114,78 @@ test('student serializers expose explicit samples but no hidden or privileged fi
   assert.equal(JSON.stringify(submission).includes('hidden-out'), false);
   assert.equal(JSON.stringify(submission).includes('secret'), false);
 });
+
+test('problem serialization exposes ioMode, inputFile, outputFile and sample tests without hidden tests', () => {
+  const sanitized = sanitizeProblemForStudent({
+    id: 'prob-io',
+    code: 'BAI1',
+    title: 'Bài 1',
+    ioMode: 'freopen',
+    inputFile: 'bai1.inp',
+    outputFile: 'bai1.out',
+    samples: [{ input: '1 2', output: '3' }],
+    testCases: [{ input: '100 200', expectedOutput: '300' }]
+  });
+  assert.equal(sanitized.ioMode, 'freopen');
+  assert.equal(sanitized.inputFile, 'bai1.inp');
+  assert.equal(sanitized.outputFile, 'bai1.out');
+  assert.equal(sanitized.samples.length, 1);
+  assert.equal(sanitized.testCases.length, 0);
+});
+
+test('virtual session lifecycle: leaving screen sets LEFT, only finish sets COMPLETED, reopen enforces allowReopen', () => {
+  const db = require('../server/db.cjs');
+  const contest = db.createContest({
+    title: 'Kỳ thi thử Virtual',
+    durationMinutes: 45,
+    allowReopen: true,
+    startTime: new Date(Date.now() - 3600000).toISOString(),
+    endTime: new Date(Date.now() - 1000).toISOString(),
+    status: 'ended'
+  });
+
+  // 1. Create session -> status is running, NOT completed
+  const session = db.createVirtualSession({
+    userId: 'test-student-vs',
+    userName: 'hocsinh_vs',
+    contestId: contest.id,
+    durationMinutes: 45
+  });
+  assert.equal(session.status, 'running');
+  assert.equal(session.allowReopen, true);
+
+  // 2. Leaving screen -> status must be LEFT, NOT completed
+  const leftSession = db.leaveVirtualSession(session.id);
+  assert.equal(leftSession.status, 'left');
+  assert.notEqual(leftSession.status, 'completed');
+
+  // 3. Resuming screen -> status becomes running again
+  const resumedSession = db.resumeVirtualSession(session.id);
+  assert.equal(resumedSession.status, 'running');
+
+  // 4. Finish session manually -> status becomes completed
+  const finishedSession = db.finishVirtualSession(session.id, 'manual');
+  assert.equal(finishedSession.status, 'completed');
+  assert.equal(finishedSession.endReason, 'manual');
+
+  // 5. Test allowReopen = false
+  const contestNoReopen = db.createContest({
+    title: 'Kỳ thi khóa Reopen',
+    durationMinutes: 30,
+    allowReopen: false,
+    startTime: new Date(Date.now() - 3600000).toISOString(),
+    endTime: new Date(Date.now() - 1000).toISOString(),
+    status: 'ended'
+  });
+  const session2 = db.createVirtualSession({
+    userId: 'test-student-noreopen',
+    userName: 'hocsinh_noreopen',
+    contestId: contestNoReopen.id,
+    durationMinutes: 30
+  });
+  assert.equal(session2.allowReopen, false);
+  const leftSession2 = db.leaveVirtualSession(session2.id);
+  assert.equal(leftSession2.status, 'left');
+  assert.equal(leftSession2.allowReopen, false);
+});
+

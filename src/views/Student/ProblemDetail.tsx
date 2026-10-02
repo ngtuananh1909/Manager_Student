@@ -504,11 +504,11 @@ export const ProblemDetail: React.FC<Props> = ({
             <button 
               type="button"
               className="btn btn-danger btn-sm"
-              style={{ fontSize: '0.74rem', padding: '3px 8px', display: 'inline-flex', alignItems: 'center', gap: '4px' }}
+              style={{ fontSize: '0.74rem', padding: '3px 10px', display: 'inline-flex', alignItems: 'center', gap: '4px', fontWeight: 700 }}
               onClick={onFinishVirtualSession}
-              title="Kết thúc sớm phiên thi ảo"
+              title="Kết thúc kỳ thi ảo"
             >
-              <LogOut size={12} /> Kết Thúc Phiên Ảo
+              <LogOut size={12} /> KẾT THÚC THI
             </button>
           )}
         </div>
@@ -615,7 +615,8 @@ export const ProblemDetail: React.FC<Props> = ({
                 <span>Test chấm: <strong style={{ color: 'var(--text-main)' }}>{problem.testCount || 0} Test (Bí mật)</strong></span>
               </div>
 
-              {contestInfo?.requireFreopen && (
+              {/* IO Mode Badge */}
+              {(problem.ioMode === 'freopen' || contestInfo?.requireFreopen) ? (
                 <div style={{
                   display: 'inline-flex',
                   alignItems: 'center',
@@ -629,7 +630,23 @@ export const ProblemDetail: React.FC<Props> = ({
                   fontWeight: 600
                 }}>
                   <FileCode2 size={13} />
-                  <span>Yêu cầu tệp: <strong style={{ fontFamily: 'var(--font-mono)' }}>{problem.code.toLowerCase()}.inp</strong> / <strong style={{ fontFamily: 'var(--font-mono)' }}>{problem.code.toLowerCase()}.out</strong></span>
+                  <span>[ FREOPEN ] <strong style={{ fontFamily: 'var(--font-mono)' }}>{problem.inputFile || `${problem.code.toLowerCase()}.inp`}</strong> / <strong style={{ fontFamily: 'var(--font-mono)' }}>{problem.outputFile || `${problem.code.toLowerCase()}.out`}</strong></span>
+                </div>
+              ) : (
+                <div style={{
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: '5px',
+                  fontSize: '0.78rem',
+                  background: 'rgba(59, 130, 246, 0.1)',
+                  border: '1px solid rgba(59, 130, 246, 0.35)',
+                  color: '#60a5fa',
+                  padding: '4px 9px',
+                  borderRadius: '6px',
+                  fontWeight: 600
+                }}>
+                  <Code2 size={13} />
+                  <span>[ STDIN / STDOUT ]</span>
                 </div>
               )}
             </div>

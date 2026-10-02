@@ -717,6 +717,8 @@ class Database {
       pinCode: contest.pinCode ? String(contest.pinCode).trim() : "",
       hideTestDetailsForStudents: contest.hideTestDetailsForStudents !== false,
       requireFreopen: !!contest.requireFreopen,
+      allowReopen: contest.allowReopen !== false,
+      ioMode: contest.ioMode || (contest.requireFreopen ? 'freopen' : 'stdin'),
       ipWhitelist: String(contest.ipWhitelist || '').trim(),
       antiCheat: {
         preventTabSwitch: contest.antiCheat?.preventTabSwitch !== false,
@@ -756,6 +758,12 @@ class Database {
       }
       if (updates.category !== undefined) {
         merged.category = updates.category;
+      }
+      if (updates.allowReopen !== undefined) {
+        merged.allowReopen = updates.allowReopen !== false;
+      }
+      if (updates.ioMode !== undefined) {
+        merged.ioMode = updates.ioMode;
       }
       this.data.contests[idx] = merged;
       this.flushSync();
@@ -935,9 +943,11 @@ class Database {
       endTime: new Date(now + duration * 60 * 1000).toISOString(),
       durationMinutes: duration,
       status: 'running',
+      allowReopen: contest ? contest.allowReopen !== false : true,
       score: 0,
       problemsSolved: 0,
       totalSubmissions: 0,
+      lastActiveAt: new Date(now).toISOString(),
       createdAt: new Date().toISOString()
     };
     this.data.virtual_sessions.push(session);
@@ -959,10 +969,49 @@ class Database {
     return this.data.virtual_sessions.find(vs => vs.id === id);
   }
 
-  finishVirtualSession(id) {
+  leaveVirtualSession(id) {
     const session = this.getVirtualSession(id);
     if (!session) return null;
-    session.status = 'completed';
+    if (session.status === 'running') {
+      session.status = 'left';
+    }
+    session.lastActiveAt = new Date().toISOString();
+    this.save();
+    return session;
+  }
+
+  resumeVirtualSession(id) {
+    const session = this.getVirtualSession(id);
+    if (!session) return null;
+    if (session.status === 'left') {
+      session.status = 'running';
+    }
+    session.lastActiveAt = new Date().toISOString();
+    this.save();
+    return session;
+  }
+
+  getActiveVirtualSession(userId) {
+    if (!this.data.virtual_sessions) this.data.virtual_sessions = [];
+    const now = Date.now();
+    const session = this.data.virtual_sessions.find(vs => 
+      vs.userId === userId && (vs.status === 'running' || vs.status === 'left')
+    );
+    if (!session) return null;
+    const end = new Date(session.endTime).getTime();
+    if (now > end) {
+      return this.finishVirtualSession(session.id, 'timeout');
+    }
+    return session;
+  }
+
+  finishVirtualSession(id, endReason = 'manual') {
+    const session = this.getVirtualSession(id);
+    if (!session) return null;
+    session.status = endReason === 'timeout' ? 'timeout' : 'completed';
+    session.endReason = endReason;
+    session.endedAt = new Date().toISOString();
+    session.lastActiveAt = session.endedAt;
     const sessionSubs = this.data.submissions.filter(s => s.virtualSessionId === id);
     const probMap = {};
     for (const sub of sessionSubs) {

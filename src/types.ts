@@ -1,6 +1,6 @@
 export type Role = 'host' | 'user';
 
-export type Verdict = 'AC' | 'WA' | 'TLE' | 'MLE' | 'RE' | 'CE' | 'QUEUED' | 'JUDGING';
+export type Verdict = 'AC' | 'WA' | 'TLE' | 'MLE' | 'RE' | 'CE' | 'QUEUED' | 'COMPILING' | 'JUDGING';
 
 export interface TestCase {
   id: string;
@@ -39,6 +39,9 @@ export interface Problem {
   sampleCode?: string;
   pdfUrl?: string;
   pdfFileName?: string;
+  ioMode?: 'stdin' | 'freopen';
+  inputFile?: string;
+  outputFile?: string;
   testCases?: TestCase[]; // Kept on server, never sent to student
   testCount?: number;     // Total count of tests (shown to student)
 }
@@ -71,6 +74,10 @@ export interface Submission {
   id: string;
   userId: string;
   userName: string;
+  userFullName?: string;
+  className?: string;
+  ip?: string;
+  createdAt?: string;
   problemId: string;
   problemCode: string;
   code: string;
@@ -109,6 +116,8 @@ export interface ContestReport {
   rows: ContestReportRow[];
 }
 
+export type VirtualSessionStatus = 'not_started' | 'running' | 'left' | 'completed' | 'timeout';
+
 export interface VirtualSession {
   id: string;
   userId: string;
@@ -118,7 +127,10 @@ export interface VirtualSession {
   startTime: string;
   endTime: string;
   durationMinutes: number;
-  status: 'running' | 'completed';
+  status: VirtualSessionStatus;
+  lastActiveAt?: string;
+  endReason?: 'manual' | 'timeout' | 'admin';
+  allowReopen?: boolean;
   score?: number;
   problemsSolved?: number;
   totalSubmissions?: number;
@@ -158,6 +170,8 @@ export interface Contest {
   freezeScoreboardMinutes: number; // Đóng băng BXH trước khi hết giờ (phút)
   pinCode?: string;           // Mã PIN phòng thi
   requiresPin?: boolean;      // Server-safe signal; the PIN value is never returned to students
+  allowReopen?: boolean;      // Cho phép thí sinh vào lại kỳ thi sau khi rời màn hình (mặc định: true)
+  ioMode?: 'stdin' | 'freopen'; // Phương thức I/O ('stdin' | 'freopen')
   antiCheat: {
     preventTabSwitch: boolean;
     maxTabViolations: number;

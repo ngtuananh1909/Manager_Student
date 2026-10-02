@@ -23,6 +23,9 @@ function sanitizeProblemForStudent(problem) {
     pdfUrl: problem.pdfUrl,
     pdfFileName: problem.pdfFileName,
     testCount: problem.testCount ?? (Array.isArray(problem.testCases) ? problem.testCases.length : 0),
+    ioMode: problem.ioMode || 'stdin',
+    inputFile: problem.inputFile,
+    outputFile: problem.outputFile,
     samples,
     testCases: []
   };

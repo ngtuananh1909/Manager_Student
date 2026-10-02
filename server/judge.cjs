@@ -557,6 +557,26 @@ class JudgeEngine {
         diff: diffResult ? diffResult.diff : undefined,
         diffTruncated: diffResult ? diffResult.truncated : undefined
       });
+
+      if (onProgress) {
+        onProgress({
+          status: 'TESTING',
+          currentTest: i + 1,
+          totalTests: testCases.length,
+          lastTestIndex: i + 1,
+          lastTestStatus: testStatus,
+          lastTestTime: runResult.time,
+          lastTestMemory: runResult.memory,
+          details: testResults.map(tr => ({
+            testIndex: tr.testIndex,
+            name: tr.name,
+            status: tr.status,
+            time: tr.time,
+            memory: tr.memory
+          })),
+          message: `Đã chấm test ${i + 1}/${testCases.length}: ${testStatus}`
+        });
+      }
     }
 
     // Cleanup per-submission workspace

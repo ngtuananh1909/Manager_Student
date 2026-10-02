@@ -31,7 +31,8 @@ import {
   FileText,
   Download,
   Eye,
-  RefreshCw
+  RefreshCw,
+  LogOut
 } from 'lucide-react';
 
 export const ContestsView: React.FC = () => {
@@ -146,6 +147,27 @@ export const ContestsView: React.FC = () => {
     };
   }, [activeContest]);
 
+  // Rule 9 & 10: Auto-restore active virtual session on page load / F5 refresh without resetting timer
+  useEffect(() => {
+    if (!user || activeContest) return;
+    apiFetch(`${serverUrl}/api/virtual-sessions/active`)
+      .then(res => res.json())
+      .then(activeSession => {
+        if (activeSession && (activeSession.status === 'running' || activeSession.status === 'left')) {
+          const now = getServerNow ? getServerNow() : Date.now();
+          const end = new Date(activeSession.endTime).getTime();
+          if (now < end && (activeSession.status === 'running' || activeSession.allowReopen !== false)) {
+            setActiveVirtualSession(activeSession);
+            if (activeSession.contest) {
+              setActiveContest(activeSession.contest);
+              setActiveContestProblems(activeSession.contest.problems || []);
+            }
+          }
+        }
+      })
+      .catch(() => {});
+  }, [user, serverUrl]);
+
   // Countdown timer calculation
   useEffect(() => {
     if (!activeContest) {
@@ -163,8 +185,12 @@ export const ContestsView: React.FC = () => {
       setRemainingSeconds(diffSec);
 
       if (diffSec === 0 && activeVirtualSession) {
-        // Auto-finish virtual session when timer reaches zero
-        apiFetch(`${serverUrl}/api/virtual-sessions/${activeVirtualSession.id}/finish`, { method: 'POST' }).catch(() => {});
+        // Auto-finish virtual session when timer reaches zero (TIMEOUT)
+        apiFetch(`${serverUrl}/api/virtual-sessions/${activeVirtualSession.id}/finish`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ endReason: 'timeout' })
+        }).catch(() => {});
       }
     };
 
@@ -293,22 +319,44 @@ export const ContestsView: React.FC = () => {
     }
   };
 
-  // Finish Virtual Session early
+  // Resume Virtual Contest if paused / left
+  const handleResumeVirtualContest = async (c: Contest, vs: VirtualSession) => {
+    try {
+      const res = await apiFetch(`${serverUrl}/api/virtual-sessions/${vs.id}/resume`, { method: 'POST' });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        alert(err.error || 'Không thể vào lại kỳ thi này.');
+        return;
+      }
+      const updatedVs: VirtualSession = await res.json();
+      setActiveContest(c);
+      setActiveContestProblems(c.problems || []);
+      setActiveProblem(null);
+      setActiveVirtualSession(updatedVs);
+    } catch (e: any) {
+      alert('Lỗi vào lại kỳ thi: ' + e.message);
+    }
+  };
+
+  // Rule 7: Nút "KẾT THÚC THI" - Confirm Dialog -> status = COMPLETED
   const handleFinishVirtualSession = async () => {
     if (!activeVirtualSession) return;
-    if (!window.confirm('Bạn có chắc chắn muốn nộp bài và kết thúc phiên thi ảo này?')) return;
+    if (!window.confirm('Bạn có chắc chắn muốn nộp bài và KẾT THÚC KỲ THI?\n\nSau khi xác nhận, kỳ thi sẽ hoàn tất và bạn KHÔNG THỂ nộp bài tiếp.')) return;
 
     try {
       await apiFetch(`${serverUrl}/api/virtual-sessions/${activeVirtualSession.id}/finish`, {
-        method: 'POST'
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ endReason: 'manual' })
       });
-      alert('Phiên thi ảo đã kết thúc! Kết quả của bạn đã được ghi nhận vào Bảng Xếp Hạng Thi Ảo.');
+      alert('Kỳ thi đã kết thúc! Kết quả của bạn đã được ghi nhận vào Bảng Xếp Hạng Thi Ảo.');
       setActiveVirtualSession(null);
       setActiveContest(null);
       setActiveProblem(null);
       fetchContests();
     } catch (e: any) {
       console.error(e);
+      alert('Lỗi khi kết thúc kỳ thi: ' + (e?.message || 'Lỗi mạng LAN'));
     }
   };
 
@@ -397,11 +445,21 @@ export const ContestsView: React.FC = () => {
             <button 
               type="button"
               className="btn btn-outline btn-sm"
-              onClick={() => {
+              onClick={async () => {
                 if (activeVirtualSession) {
-                  if (window.confirm('Rời khỏi sẽ giữ nguyên thời gian đếm ngược của phiên thi ảo. Bạn có muốn thoát ra danh sách?')) {
-                    setActiveContest(null);
-                  }
+                  const allowReopen = activeVirtualSession.allowReopen !== false;
+                  const confirmMsg = allowReopen
+                    ? 'Rời khỏi màn hình thi sẽ tạm dừng phiên thi ảo của bạn (thời gian làm bài vẫn tiếp tục đếm ngược theo máy chủ). Bạn có muốn rời khỏi?'
+                    : 'Kỳ thi này KHÔNG CHO PHÉP VÀO LẠI sau khi thoát. Nếu bạn rời khỏi bây giờ, bạn sẽ bị khóa và không thể làm bài tiếp!\n\nBạn có chắc chắn muốn rời khỏi?';
+                  if (!window.confirm(confirmMsg)) return;
+
+                  try {
+                    await apiFetch(`${serverUrl}/api/virtual-sessions/${activeVirtualSession.id}/leave`, { method: 'POST' });
+                  } catch (e) {}
+                  setActiveContest(null);
+                  setActiveVirtualSession(null);
+                  setActiveProblem(null);
+                  fetchContests();
                 } else {
                   setActiveContest(null);
                 }
@@ -451,8 +509,9 @@ export const ContestsView: React.FC = () => {
                 type="button"
                 className="btn btn-danger btn-sm"
                 onClick={handleFinishVirtualSession}
+                style={{ fontWeight: 700, padding: '4px 12px', display: 'inline-flex', alignItems: 'center', gap: '5px' }}
               >
-                Nộp & Kết Thúc
+                <LogOut size={13} /> KẾT THÚC THI
               </button>
             )}
           </div>
@@ -503,6 +562,15 @@ export const ContestsView: React.FC = () => {
                         <span>{prob.title}</span>
                         {prob.pdfUrl && (
                           <span className="pdf-tag"><FileText size={10} /> PDF</span>
+                        )}
+                        {(prob.ioMode === 'freopen' || activeContest.requireFreopen) ? (
+                          <span className="badge" style={{ background: 'rgba(245, 158, 11, 0.15)', color: '#f59e0b', fontSize: '0.68rem', fontWeight: 700, border: '1px solid rgba(245, 158, 11, 0.3)' }}>
+                            FREOPEN ({prob.inputFile || `${prob.code.toLowerCase()}.inp`} / {prob.outputFile || `${prob.code.toLowerCase()}.out`})
+                          </span>
+                        ) : (
+                          <span className="badge" style={{ background: 'rgba(59, 130, 246, 0.15)', color: '#60a5fa', fontSize: '0.68rem', fontWeight: 700, border: '1px solid rgba(59, 130, 246, 0.3)' }}>
+                            STDIN / STDOUT
+                          </span>
                         )}
                       </div>
                     </td>
@@ -782,23 +850,57 @@ export const ContestsView: React.FC = () => {
                           <span style={{ fontSize: '0.75rem', color: 'var(--accent-amber)', fontStyle: 'italic' }}>Chờ mở đề</span>
                         ) : (
                           <>
-                            <button 
-                              type="button"
-                              className="btn btn-primary btn-sm" 
-                              style={{ 
-                                padding: '4px 10px', 
-                                fontSize: '0.76rem', 
-                                background: 'linear-gradient(135deg, #6366f1 0%, #4f46e5 100%)',
-                                border: 'none',
-                                display: 'inline-flex', 
-                                alignItems: 'center', 
-                                gap: '4px' 
-                              }}
-                              onClick={(e) => { e.stopPropagation(); setVirtualModalContest(c); }}
-                              title="Mô phỏng thi lại như lúc thi thật với đồng hồ đếm ngược"
-                            >
-                              <RotateCcw size={12} /> Thi Ảo
-                            </button>
+                            {(() => {
+                              const activeVs = userPastVirtuals.find(s => s.status === 'running' || s.status === 'left');
+                              if (activeVs) {
+                                if (activeVs.status === 'left' && activeVs.allowReopen === false) {
+                                  return (
+                                    <span className="badge" style={{ background: 'rgba(239, 68, 68, 0.15)', color: '#f87171', border: '1px solid rgba(239, 68, 68, 0.3)', fontSize: '0.72rem' }}>
+                                      Đã rời thi (Khóa vào lại)
+                                    </span>
+                                  );
+                                }
+                                return (
+                                  <button 
+                                    type="button"
+                                    className="btn btn-primary btn-sm" 
+                                    style={{ 
+                                      padding: '4px 10px', 
+                                      fontSize: '0.76rem', 
+                                      background: 'linear-gradient(135deg, #10b981 0%, #059669 100%)',
+                                      border: 'none',
+                                      display: 'inline-flex', 
+                                      alignItems: 'center', 
+                                      gap: '4px',
+                                      fontWeight: 700
+                                    }}
+                                    onClick={(e) => { e.stopPropagation(); handleResumeVirtualContest(c, activeVs); }}
+                                    title="Tiếp tục làm bài thi ảo đang dang dở"
+                                  >
+                                    <Play size={12} /> Tiếp Tục Thi Ảo
+                                  </button>
+                                );
+                              }
+                              return (
+                                <button 
+                                  type="button"
+                                  className="btn btn-primary btn-sm" 
+                                  style={{ 
+                                    padding: '4px 10px', 
+                                    fontSize: '0.76rem', 
+                                    background: 'linear-gradient(135deg, #6366f1 0%, #4f46e5 100%)',
+                                    border: 'none',
+                                    display: 'inline-flex', 
+                                    alignItems: 'center', 
+                                    gap: '4px' 
+                                  }}
+                                  onClick={(e) => { e.stopPropagation(); setVirtualModalContest(c); }}
+                                  title="Mô phỏng thi lại như lúc thi thật với đồng hồ đếm ngược"
+                                >
+                                  <RotateCcw size={12} /> Thi Ảo
+                                </button>
+                              );
+                            })()}
                             <button 
                               type="button"
                               className="btn btn-outline btn-sm" 

@@ -1078,8 +1078,14 @@ app.post('/api/submissions', submissionRateLimiter, (req, res) => {
     }
     const now = Date.now();
     const end = new Date(virtualSession.endTime).getTime();
-    if (virtualSession.status === 'completed' || now > end) {
-      return res.status(403).json({ code: 'VIRTUAL_SESSION_ENDED', error: 'Phiên thi ảo đã hết giờ làm bài.' });
+    if (virtualSession.status === 'completed' || virtualSession.status === 'timeout' || now > end) {
+      if (now > end && virtualSession.status !== 'completed' && virtualSession.status !== 'timeout') {
+        db.finishVirtualSession(virtualSession.id, 'timeout');
+      }
+      return res.status(403).json({ code: 'VIRTUAL_SESSION_ENDED', error: 'Phiên thi ảo đã hết giờ làm bài hoặc đã kết thúc.' });
+    }
+    if (virtualSession.status === 'left' && virtualSession.allowReopen === false) {
+      return res.status(403).json({ code: 'VIRTUAL_REOPEN_DENIED', error: 'Kỳ thi không cho phép nộp bài sau khi đã rời màn hình.' });
     }
     if (contestId && contestId !== virtualSession.contestId) {
       return res.status(403).json({ code: 'VIRTUAL_CONTEST_MISMATCH', error: 'Phiên thi ảo không thuộc kỳ thi đã gửi.' });
@@ -1411,6 +1417,12 @@ function processContestImportedProblems(importedProblems, existingProblemIds = [
       ? imp.samples
       : (existing && Array.isArray(existing.samples) ? existing.samples : []);
 
+    const ioMode = imp.ioMode || (req.body?.requireFreopen ? 'freopen' : 'stdin');
+    const defaultInpFile = `${cleanCode.toLowerCase()}.inp`;
+    const defaultOutFile = `${cleanCode.toLowerCase()}.out`;
+    const inputFile = imp.inputFile || (ioMode === 'freopen' ? defaultInpFile : undefined);
+    const outputFile = imp.outputFile || (ioMode === 'freopen' ? defaultOutFile : undefined);
+
     if (existing) {
       db.updateProblem(existing.id, {
         title: cleanTitle,
@@ -1418,7 +1430,10 @@ function processContestImportedProblems(importedProblems, existingProblemIds = [
         samples: samples,
         points: probPoints,
         timeLimit: Number(imp.timeLimit) || existing.timeLimit || 1000,
-        memoryLimit: Number(imp.memoryLimit) || existing.memoryLimit || 256
+        memoryLimit: Number(imp.memoryLimit) || existing.memoryLimit || 256,
+        ioMode,
+        inputFile,
+        outputFile
       });
       if (!problemIds.includes(existing.id)) {
         problemIds.push(existing.id);
@@ -1431,6 +1446,9 @@ function processContestImportedProblems(importedProblems, existingProblemIds = [
         points: probPoints,
         timeLimit: Number(imp.timeLimit) || 1000,
         memoryLimit: Number(imp.memoryLimit) || 256,
+        ioMode,
+        inputFile,
+        outputFile,
         samples: samples,
         testCases: testCases
       });
@@ -1564,6 +1582,27 @@ app.post('/api/contests/:id/virtual-start', (req, res) => {
     return res.status(403).json({ code: 'VIRTUAL_NOT_AVAILABLE', error: 'Thi ảo chỉ mở sau khi kỳ thi chính thức kết thúc.' });
   }
 
+  const now = Date.now();
+  const existingSessions = db.getVirtualSessions({ contestId: contest.id, userId: req.user.id });
+  const activeSession = existingSessions.find(s => s.status === 'running' || s.status === 'left');
+
+  if (activeSession) {
+    const end = new Date(activeSession.endTime).getTime();
+    if (now > end) {
+      db.finishVirtualSession(activeSession.id, 'timeout');
+    } else if (activeSession.status === 'left') {
+      if (activeSession.allowReopen === false) {
+        return res.status(403).json({ code: 'VIRTUAL_REOPEN_DENIED', error: 'Kỳ thi không cho phép vào lại sau khi đã rời màn hình.' });
+      }
+      const resumed = db.resumeVirtualSession(activeSession.id);
+      const problems = (contest.problemIds || []).map(problemId => db.getProblem(problemId)).filter(Boolean);
+      return res.json({ ...resumed, contest: sanitizeContestForStudent(withDynamicContestStatus(contest), problems) });
+    } else {
+      const problems = (contest.problemIds || []).map(problemId => db.getProblem(problemId)).filter(Boolean);
+      return res.json({ ...activeSession, contest: sanitizeContestForStudent(withDynamicContestStatus(contest), problems) });
+    }
+  }
+
   const session = db.createVirtualSession({
     userId: req.user.id,
     userName: req.user.fullName || req.user.username,
@@ -1572,6 +1611,52 @@ app.post('/api/contests/:id/virtual-start', (req, res) => {
   });
   const problems = (contest.problemIds || []).map(problemId => db.getProblem(problemId)).filter(Boolean);
   res.json({ ...session, contest: sanitizeContestForStudent(withDynamicContestStatus(contest), problems) });
+});
+
+app.get('/api/virtual-sessions/active', (req, res) => {
+  const session = db.getActiveVirtualSession(req.user.id);
+  if (!session || session.status === 'completed' || session.status === 'timeout') {
+    return res.json(null);
+  }
+  const contest = db.getContest(session.contestId);
+  const problems = contest ? (contest.problemIds || []).map(pId => db.getProblem(pId)).filter(Boolean) : [];
+  res.json({
+    ...session,
+    contest: contest ? sanitizeContestForStudent(withDynamicContestStatus(contest), problems) : null
+  });
+});
+
+app.post('/api/virtual-sessions/:id/leave', (req, res) => {
+  const session = db.getVirtualSession(req.params.id);
+  if (!session) return res.status(404).json({ error: 'Phiên thi ảo không tồn tại' });
+  if (req.user.role !== 'host' && session.userId !== req.user.id) {
+    return res.status(403).json({ error: 'Phiên thi ảo không thuộc tài khoản này.' });
+  }
+  const updated = db.leaveVirtualSession(req.params.id);
+  io.to('role:host').emit('virtual_session:updated', updated);
+  res.json(updated);
+});
+
+app.post('/api/virtual-sessions/:id/resume', (req, res) => {
+  const session = db.getVirtualSession(req.params.id);
+  if (!session) return res.status(404).json({ error: 'Phiên thi ảo không tồn tại' });
+  if (req.user.role !== 'host' && session.userId !== req.user.id) {
+    return res.status(403).json({ error: 'Phiên thi ảo không thuộc tài khoản này.' });
+  }
+  const now = Date.now();
+  const end = new Date(session.endTime).getTime();
+  if (session.status === 'completed' || session.status === 'timeout' || now > end) {
+    if (now > end && session.status !== 'completed' && session.status !== 'timeout') {
+      db.finishVirtualSession(session.id, 'timeout');
+    }
+    return res.status(403).json({ code: 'VIRTUAL_SESSION_ENDED', error: 'Phiên thi ảo đã hết giờ làm bài hoặc đã kết thúc.' });
+  }
+  if (session.status === 'left' && session.allowReopen === false) {
+    return res.status(403).json({ code: 'VIRTUAL_REOPEN_DENIED', error: 'Kỳ thi không cho phép vào lại sau khi đã rời màn hình.' });
+  }
+  const updated = db.resumeVirtualSession(req.params.id);
+  io.to('role:host').emit('virtual_session:updated', updated);
+  res.json(updated);
 });
 
 app.get('/api/contests/:id/virtual-sessions', (req, res) => {
@@ -1586,7 +1671,9 @@ app.post('/api/virtual-sessions/:id/finish', (req, res) => {
   if (req.user.role !== 'host' && session.userId !== req.user.id) {
     return res.status(403).json({ code: 'VIRTUAL_SESSION_FORBIDDEN', error: 'Phiên thi ảo không thuộc tài khoản này.' });
   }
-  const finished = db.finishVirtualSession(req.params.id);
+  const endReason = req.body?.endReason || 'manual';
+  const finished = db.finishVirtualSession(req.params.id, endReason);
+  io.to('role:host').emit('virtual_session:updated', finished);
   res.json(finished);
 });
 

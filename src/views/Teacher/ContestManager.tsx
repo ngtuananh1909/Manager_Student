@@ -100,6 +100,9 @@ export const ContestManager: React.FC = () => {
     points?: number;
     timeLimit?: number; // seconds
     memoryLimit?: number; // MB
+    ioMode?: 'stdin' | 'freopen';
+    inputFile?: string;
+    outputFile?: string;
     samples?: { input: string; output: string; explanation?: string }[];
     testCases: { name: string; input: string; expectedOutput: string; points: number }[];
     status: 'valid' | 'invalid';
@@ -394,6 +397,7 @@ export const ContestManager: React.FC = () => {
       pinCode: '',
       hideTestDetailsForStudents: true,
       requireFreopen: false,
+      allowReopen: true,
       ipWhitelist: '',
       antiCheat: {
         preventTabSwitch: true,
@@ -445,6 +449,7 @@ export const ContestManager: React.FC = () => {
       endTime: formatDT(c.endTime),
       hideTestDetailsForStudents: c.hideTestDetailsForStudents ?? true,
       requireFreopen: c.requireFreopen ?? false,
+      allowReopen: c.allowReopen ?? true,
       ipWhitelist: c.ipWhitelist || '',
       memoryLimit: c.memoryLimit || 256,
       category: c.category || 'regular'
@@ -461,6 +466,9 @@ export const ContestManager: React.FC = () => {
       points: p.points || Math.round(contestTotal / (contestProbs.length || 1)),
       timeLimit: Math.round(((p.timeLimit || 1000) / 1000) * 10) / 10,
       memoryLimit: p.memoryLimit || 256,
+      ioMode: p.ioMode || (c.requireFreopen ? 'freopen' : 'stdin'),
+      inputFile: p.inputFile || `${p.code.toLowerCase()}.inp`,
+      outputFile: p.outputFile || `${p.code.toLowerCase()}.out`,
       samples: Array.isArray(p.samples) ? p.samples : [],
       testCases: (p.testCases || []).map((tc, idx) => ({
         name: tc.name || `test${String(idx + 1).padStart(2, '0')}`,
@@ -820,7 +828,7 @@ export const ContestManager: React.FC = () => {
     }));
   };
 
-  const updateProblemConfig = (probCode: string, field: 'points' | 'timeLimit' | 'memoryLimit' | 'title', value: any) => {
+  const updateProblemConfig = (probCode: string, field: 'points' | 'timeLimit' | 'memoryLimit' | 'title' | 'ioMode' | 'inputFile' | 'outputFile', value: any) => {
     setImportedFolderProblems(prev => prev.map(p => {
       if (p.code.toLowerCase() === probCode.toLowerCase()) {
         return { ...p, [field]: value };
@@ -924,6 +932,17 @@ export const ContestManager: React.FC = () => {
         alert(`❌ Bài "${p.code}": Phải có ít nhất 1 Test Case hợp lệ`);
         return;
       }
+      const isFreopen = p.ioMode === 'freopen' || formContest.requireFreopen;
+      if (isFreopen) {
+        if (!p.inputFile || !p.inputFile.trim()) {
+          alert(`❌ Bài "${p.code}": Vui lòng nhập tên tệp đầu vào (Input file) khi chọn freopen`);
+          return;
+        }
+        if (!p.outputFile || !p.outputFile.trim()) {
+          alert(`❌ Bài "${p.code}": Vui lòng nhập tên tệp đầu ra (Output file) khi chọn freopen`);
+          return;
+        }
+      }
     }
 
     if (folderErrors.length > 0) {
@@ -956,6 +975,9 @@ export const ContestManager: React.FC = () => {
           points: Number(p.points) || Math.round(contestTotal / importedFolderProblems.length),
           timeLimit: Math.round((Number(p.timeLimit) || 1) * 1000), // convert seconds to ms
           memoryLimit: Number(p.memoryLimit) || 256,
+          ioMode: p.ioMode || (formContest.requireFreopen ? 'freopen' : 'stdin'),
+          inputFile: p.inputFile || `${p.code.toLowerCase()}.inp`,
+          outputFile: p.outputFile || `${p.code.toLowerCase()}.out`,
           samples: Array.isArray(p.samples) ? p.samples : [],
           testCases: p.testCases
         })),
@@ -2536,6 +2558,17 @@ export const ContestManager: React.FC = () => {
                                           onChange={(e) => updateProblemConfig(prob.code, 'title', e.target.value)}
                                           style={{ fontSize: '0.78rem', padding: '3px 6px', height: '26px', marginTop: '3px', width: '100%' }}
                                         />
+                                        <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginTop: '4px', flexWrap: 'wrap' }}>
+                                          {(prob.ioMode === 'freopen' || formContest.requireFreopen) ? (
+                                            <span className="badge" style={{ background: 'rgba(245, 158, 11, 0.15)', color: '#f59e0b', fontSize: '0.7rem', fontWeight: 700, border: '1px solid rgba(245, 158, 11, 0.3)' }}>
+                                              FREOPEN ({prob.inputFile || `${prob.code.toLowerCase()}.inp`} / {prob.outputFile || `${prob.code.toLowerCase()}.out`})
+                                            </span>
+                                          ) : (
+                                            <span className="badge" style={{ background: 'rgba(59, 130, 246, 0.15)', color: '#60a5fa', fontSize: '0.7rem', fontWeight: 700, border: '1px solid rgba(59, 130, 246, 0.3)' }}>
+                                              STDIN / STDOUT
+                                            </span>
+                                          )}
+                                        </div>
                                       </div>
                                     </div>
                                   </td>
@@ -2632,6 +2665,69 @@ export const ContestManager: React.FC = () => {
                                 {isExpanded && (
                                   <tr>
                                     <td colSpan={6} style={{ padding: '14px 18px 16px 34px', background: 'rgba(0, 0, 0, 0.25)', borderBottom: '1px solid var(--border-subtle)' }}>
+                                      {/* SECTION 0: CẤU HÌNH CHƯƠNG TRÌNH & PHƯƠNG THỨC I/O */}
+                                      <div style={{
+                                        marginBottom: '14px',
+                                        background: 'rgba(245, 158, 11, 0.05)',
+                                        border: '1px solid rgba(245, 158, 11, 0.25)',
+                                        borderRadius: '6px',
+                                        padding: '10px 14px'
+                                      }}>
+                                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '8px' }}>
+                                          <div style={{ fontWeight: 700, color: 'var(--accent-amber)', fontSize: '0.82rem', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                            ⚙️ CẤU HÌNH CHƯƠNG TRÌNH (I/O)
+                                          </div>
+                                          <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>
+                                            Phương thức vào/ra dữ liệu của bài {prob.code}
+                                          </span>
+                                        </div>
+                                        <div style={{ display: 'flex', gap: '16px', alignItems: 'center', flexWrap: 'wrap' }}>
+                                          <label style={{ display: 'flex', alignItems: 'center', gap: '6px', cursor: 'pointer', fontSize: '0.8rem' }}>
+                                            <input
+                                              type="radio"
+                                              name={`ioMode_${prob.code}`}
+                                              checked={prob.ioMode !== 'freopen' && !formContest.requireFreopen}
+                                              onChange={() => updateProblemConfig(prob.code, 'ioMode', 'stdin')}
+                                            />
+                                            <span>● stdin / stdout (cin / cout)</span>
+                                          </label>
+                                          <label style={{ display: 'flex', alignItems: 'center', gap: '6px', cursor: 'pointer', fontSize: '0.8rem' }}>
+                                            <input
+                                              type="radio"
+                                              name={`ioMode_${prob.code}`}
+                                              checked={prob.ioMode === 'freopen' || (formContest.requireFreopen && prob.ioMode !== 'stdin')}
+                                              onChange={() => updateProblemConfig(prob.code, 'ioMode', 'freopen')}
+                                            />
+                                            <span>○ freopen (đọc/ghi file .inp/.out)</span>
+                                          </label>
+                                        </div>
+                                        {(prob.ioMode === 'freopen' || (formContest.requireFreopen && prob.ioMode !== 'stdin')) && (
+                                          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px', marginTop: '8px' }}>
+                                            <div>
+                                              <label style={{ fontSize: '0.72rem', color: 'var(--text-muted)', display: 'block', marginBottom: '2px' }}>Input file:</label>
+                                              <input
+                                                type="text"
+                                                className="input-field"
+                                                placeholder={`${prob.code.toLowerCase()}.inp`}
+                                                value={prob.inputFile || `${prob.code.toLowerCase()}.inp`}
+                                                onChange={e => updateProblemConfig(prob.code, 'inputFile', e.target.value)}
+                                                style={{ fontSize: '0.78rem', fontFamily: 'var(--font-mono)' }}
+                                              />
+                                            </div>
+                                            <div>
+                                              <label style={{ fontSize: '0.72rem', color: 'var(--text-muted)', display: 'block', marginBottom: '2px' }}>Output file:</label>
+                                              <input
+                                                type="text"
+                                                className="input-field"
+                                                placeholder={`${prob.code.toLowerCase()}.out`}
+                                                value={prob.outputFile || `${prob.code.toLowerCase()}.out`}
+                                                onChange={e => updateProblemConfig(prob.code, 'outputFile', e.target.value)}
+                                                style={{ fontSize: '0.78rem', fontFamily: 'var(--font-mono)' }}
+                                              />
+                                            </div>
+                                          </div>
+                                        )}
+                                      </div>
                                       {/* SECTION 1: TEST MẪU (SAMPLES) — TÙY CHỌN */}
                                       <div style={{
                                         marginBottom: '16px',
@@ -3090,6 +3186,41 @@ export const ContestManager: React.FC = () => {
                     />
                     <div style={{ color: 'var(--text-muted)', fontSize: '0.72rem', marginTop: '2px' }}>
                       Chỉ cho phép các máy tính có IP thuộc danh sách trên được nộp bài. Có thể nhập nhiều dải IP cách nhau bởi dấu phẩy.
+                    </div>
+                  </div>
+                </div>
+
+                {/* ⚙️ CẤU HÌNH THAM GIA & KẾT THÚC */}
+                <div style={{ borderTop: '1px solid var(--border-subtle)', paddingTop: '12px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                  <div style={{ fontSize: '0.84rem', fontWeight: 700, color: 'var(--accent-purple)', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                    ⚙️ CẤU HÌNH THAM GIA & KẾT THÚC (VÀO LẠI KỲ THI)
+                  </div>
+                  <div style={{ background: 'rgba(255,255,255,0.03)', padding: '12px 14px', borderRadius: '8px', border: '1px solid var(--border-subtle)' }}>
+                    <div style={{ fontSize: '0.82rem', fontWeight: 600, marginBottom: '6px' }}>
+                      Cho phép thí sinh vào lại kỳ thi sau khi thoát (Reopen)?
+                    </div>
+                    <div style={{ display: 'flex', gap: '20px', fontSize: '0.82rem', flexWrap: 'wrap' }}>
+                      <label style={{ display: 'flex', alignItems: 'center', gap: '6px', cursor: 'pointer' }}>
+                        <input
+                          type="radio"
+                          name="allowReopen"
+                          checked={formContest.allowReopen !== false}
+                          onChange={() => setFormContest({ ...formContest, allowReopen: true })}
+                        />
+                        <span>● <strong>Có</strong> (Thí sinh được phép vào lại tiếp tục làm bài nếu chưa bấm Kết thúc thi)</span>
+                      </label>
+                      <label style={{ display: 'flex', alignItems: 'center', gap: '6px', cursor: 'pointer' }}>
+                        <input
+                          type="radio"
+                          name="allowReopen"
+                          checked={formContest.allowReopen === false}
+                          onChange={() => setFormContest({ ...formContest, allowReopen: false })}
+                        />
+                        <span>○ <strong>Không</strong> (Sau khi rời màn hình thi sẽ bị khóa, không được phép vào lại)</span>
+                      </label>
+                    </div>
+                    <div style={{ fontSize: '0.74rem', color: 'var(--text-muted)', marginTop: '6px' }}>
+                      Áp dụng cho cả thi trực tiếp và thi ảo: Khi thoát ra (bấm Quay lại, đóng màn hình, F5), nếu chọn "Có" thì học sinh có thể quay lại phòng thi làm tiếp trong thời gian cho phép.
                     </div>
                   </div>
                 </div>
