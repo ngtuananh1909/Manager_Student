@@ -41,7 +41,8 @@
       "allowToChangeInstallationDirectory": true,
       "createDesktopShortcut": true,
       "createStartMenuShortcut": true
-    }
+    },
+    "npmRebuild": false
   },
   "keywords": [],
   "author": "",
