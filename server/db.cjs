@@ -1,6 +1,7 @@
 const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
+const { DEFAULT_ACHIEVEMENTS, DEFAULT_REWARDS } = require('./achievementsData.cjs');
 
 function newId(prefix) {
   return `${prefix}-${crypto.randomUUID()}`;
@@ -65,7 +66,11 @@ const BLANK_DATA = {
   submissions: [],
   contests: [],
   virtual_sessions: [],
-  contest_attendance: {}
+  contest_attendance: {},
+  achievements: DEFAULT_ACHIEVEMENTS,
+  rewards: DEFAULT_REWARDS,
+  student_achievements: [],
+  reward_redemptions: []
 };
 
 const TESTCASES_DIR = path.join(DATA_DIR, 'testcases');
@@ -192,6 +197,14 @@ class Database {
     if (!parsed.contests) parsed.contests = [];
     if (!parsed.virtual_sessions) parsed.virtual_sessions = [];
     if (!parsed.contest_attendance) parsed.contest_attendance = {};
+    if (!parsed.achievements || !Array.isArray(parsed.achievements) || parsed.achievements.length === 0) {
+      parsed.achievements = JSON.parse(JSON.stringify(DEFAULT_ACHIEVEMENTS));
+    }
+    if (!parsed.rewards || !Array.isArray(parsed.rewards) || parsed.rewards.length === 0) {
+      parsed.rewards = JSON.parse(JSON.stringify(DEFAULT_REWARDS));
+    }
+    if (!parsed.student_achievements) parsed.student_achievements = [];
+    if (!parsed.reward_redemptions) parsed.reward_redemptions = [];
 
     // Auto-migrate heavy testCases out of schooljudge_data.json into testcases/ directory
     let migratedAny = false;
@@ -684,6 +697,8 @@ class Database {
       targetClasses,
       targetStudents,
       totalScore: Number(contest.totalScore) || 100, // Tổng điểm toàn kỳ thi (mặc định 100)
+      memoryLimit: Math.min(272, Math.max(240, Number(contest.memoryLimit) || 256)), // RAM 240-272 MB, mặc định 256 MB
+      category: contest.category || "regular",
       classIds: Array.isArray(contest.classIds) ? contest.classIds : (targetClasses || []), // Array of class IDs allowed to take contest ([] = all)
       candidateIds: Array.isArray(contest.candidateIds) ? contest.candidateIds : (targetStudents || []),
       problemIds: Array.isArray(contest.problemIds) ? contest.problemIds : [], // Array of problem IDs in contest
@@ -733,6 +748,12 @@ class Database {
       }
       if (updates.totalScore !== undefined) {
         merged.totalScore = Number(updates.totalScore);
+      }
+      if (updates.memoryLimit !== undefined) {
+        merged.memoryLimit = Math.min(272, Math.max(240, Number(updates.memoryLimit) || 256));
+      }
+      if (updates.category !== undefined) {
+        merged.category = updates.category;
       }
       this.data.contests[idx] = merged;
       this.flushSync();
@@ -1153,6 +1174,265 @@ class Database {
       participantCount: rows.length,
       rows
     };
+  }
+
+  // ==================== ACHIEVEMENTS ====================
+  getAchievements() {
+    return this.data.achievements || [];
+  }
+
+  getAchievement(id) {
+    return (this.data.achievements || []).find(a => a.id === id);
+  }
+
+  createAchievement(data) {
+    const ach = {
+      id: data.id || ('ach_' + Date.now() + '_' + Math.random().toString(36).substring(2, 6)),
+      code: data.code || ('ACH_' + Date.now()),
+      name: data.name || 'Thành tựu mới',
+      description: data.description || '',
+      icon: data.icon || '🏆',
+      category: data.category || 'SPECIAL',
+      conditionType: data.conditionType || 'MANUAL',
+      conditionValue: Number(data.conditionValue) || 1,
+      points: Number(data.points) || 10,
+      rarity: data.rarity || 'COMMON',
+      isActive: data.isActive !== undefined ? !!data.isActive : true,
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString()
+    };
+    this.data.achievements = this.data.achievements || [];
+    this.data.achievements.push(ach);
+    this.save();
+    return ach;
+  }
+
+  updateAchievement(id, updates) {
+    const ach = this.getAchievement(id);
+    if (!ach) return null;
+    Object.assign(ach, updates, { updatedAt: new Date().toISOString() });
+    if (updates.points !== undefined) ach.points = Number(updates.points);
+    if (updates.conditionValue !== undefined) ach.conditionValue = Number(updates.conditionValue);
+    this.save();
+    return ach;
+  }
+
+  deleteAchievement(id) {
+    const idx = (this.data.achievements || []).findIndex(a => a.id === id);
+    if (idx === -1) return false;
+    this.data.achievements.splice(idx, 1);
+    this.save();
+    return true;
+  }
+
+  getStudentAchievements(studentId) {
+    return (this.data.student_achievements || []).filter(sa => sa.studentId === studentId);
+  }
+
+  awardAchievement(studentId, achievementId) {
+    const existing = (this.data.student_achievements || []).find(
+      sa => sa.studentId === studentId && sa.achievementId === achievementId
+    );
+    if (existing) return existing;
+
+    const ach = this.getAchievement(achievementId);
+    if (!ach || !ach.isActive) return null;
+
+    const award = {
+      id: 'sa_' + Date.now() + '_' + Math.random().toString(36).substring(2, 6),
+      studentId,
+      achievementId,
+      awardedAt: new Date().toISOString()
+    };
+    this.data.student_achievements = this.data.student_achievements || [];
+    this.data.student_achievements.push(award);
+
+    // Add points to user profile
+    const user = this.getUser(studentId);
+    if (user) {
+      user.points = (user.points || 0) + (ach.points || 0);
+    }
+    this.save();
+    return award;
+  }
+
+  checkAndAwardAchievements(studentId) {
+    if (!studentId) return [];
+    const user = this.getUser(studentId);
+    if (!user) return [];
+
+    const existingAwards = new Set(
+      (this.data.student_achievements || [])
+        .filter(sa => sa.studentId === studentId)
+        .map(sa => sa.achievementId)
+    );
+
+    const submissions = this.getSubmissions({ userId: studentId });
+    const acSubmissions = submissions.filter(s => s.status === 'Accepted');
+    const solvedProblemIds = new Set(acSubmissions.map(s => s.problemId));
+    const contestIds = new Set(submissions.filter(s => s.contestId).map(s => s.contestId));
+
+    const newlyAwarded = [];
+    const allAchievements = this.getAchievements();
+
+    for (const ach of allAchievements) {
+      if (!ach.isActive) continue;
+      if (existingAwards.has(ach.id)) continue;
+
+      let eligible = false;
+      const targetVal = ach.conditionValue || 1;
+
+      switch (ach.conditionType) {
+        case 'FIRST_SUBMISSION':
+          eligible = submissions.length >= 1;
+          break;
+        case 'FIRST_AC':
+          eligible = acSubmissions.length >= 1;
+          break;
+        case 'AC_COUNT':
+          eligible = acSubmissions.length >= targetVal;
+          break;
+        case 'SUBMISSION_COUNT':
+          eligible = submissions.length >= targetVal;
+          break;
+        case 'SOLVE_COUNT':
+          eligible = solvedProblemIds.size >= targetVal;
+          break;
+        case 'CONTEST_COUNT':
+          eligible = contestIds.size >= targetVal;
+          break;
+        case 'POINTS':
+          eligible = (user.points || 0) >= targetVal;
+          break;
+        default:
+          break;
+      }
+
+      if (eligible) {
+        const award = this.awardAchievement(studentId, ach.id);
+        if (award) {
+          existingAwards.add(ach.id);
+          newlyAwarded.push({ ...award, achievement: ach });
+        }
+      }
+    }
+
+    return newlyAwarded;
+  }
+
+  // ==================== REWARDS ====================
+  getRewards() {
+    return this.data.rewards || [];
+  }
+
+  getReward(id) {
+    return (this.data.rewards || []).find(r => r.id === id);
+  }
+
+  createReward(data) {
+    const reward = {
+      id: data.id || ('rew_' + Date.now() + '_' + Math.random().toString(36).substring(2, 6)),
+      name: data.name || 'Phần thưởng mới',
+      description: data.description || '',
+      icon: data.icon || '🎁',
+      image: data.image || '',
+      pointsRequired: Number(data.pointsRequired) || 50,
+      stock: Number(data.stock) !== undefined ? Number(data.stock) : 10,
+      isActive: data.isActive !== undefined ? !!data.isActive : true,
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString()
+    };
+    this.data.rewards = this.data.rewards || [];
+    this.data.rewards.push(reward);
+    this.save();
+    return reward;
+  }
+
+  updateReward(id, updates) {
+    const reward = this.getReward(id);
+    if (!reward) return null;
+    Object.assign(reward, updates, { updatedAt: new Date().toISOString() });
+    if (updates.pointsRequired !== undefined) reward.pointsRequired = Number(updates.pointsRequired);
+    if (updates.stock !== undefined) reward.stock = Math.max(0, Number(updates.stock));
+    this.save();
+    return reward;
+  }
+
+  deleteReward(id) {
+    const idx = (this.data.rewards || []).findIndex(r => r.id === id);
+    if (idx === -1) return false;
+    this.data.rewards.splice(idx, 1);
+    this.save();
+    return true;
+  }
+
+  redeemReward(studentId, rewardId) {
+    const reward = this.getReward(rewardId);
+    if (!reward || !reward.isActive) {
+      throw new Error('Phần thưởng không tồn tại hoặc đã tạm dừng đổi');
+    }
+    if (reward.stock <= 0) {
+      throw new Error('Phần thưởng đã hết hàng trong kho');
+    }
+    const user = this.getUser(studentId);
+    if (!user) {
+      throw new Error('Không tìm thấy tài khoản người dùng');
+    }
+    const currentPoints = user.points || 0;
+    if (currentPoints < reward.pointsRequired) {
+      throw new Error(`Bạn cần ${reward.pointsRequired} điểm để đổi, hiện chỉ có ${currentPoints} điểm`);
+    }
+
+    // Deduct stock and points safely
+    reward.stock -= 1;
+    user.points = currentPoints - reward.pointsRequired;
+
+    const redemption = {
+      id: 'red_' + Date.now() + '_' + Math.random().toString(36).substring(2, 6),
+      studentId,
+      studentName: user.name || user.username,
+      rewardId: reward.id,
+      rewardName: reward.name,
+      rewardIcon: reward.icon || '🎁',
+      pointsSpent: reward.pointsRequired,
+      status: 'PENDING',
+      requestedAt: new Date().toISOString()
+    };
+
+    this.data.reward_redemptions = this.data.reward_redemptions || [];
+    this.data.reward_redemptions.unshift(redemption);
+    this.save();
+    return redemption;
+  }
+
+  getRewardRedemptions(studentId = null) {
+    const list = this.data.reward_redemptions || [];
+    if (studentId) {
+      return list.filter(r => r.studentId === studentId);
+    }
+    return list;
+  }
+
+  updateRedemptionStatus(redemptionId, status) {
+    const red = (this.data.reward_redemptions || []).find(r => r.id === redemptionId);
+    if (!red) return null;
+    const oldStatus = red.status;
+    red.status = status;
+    red.processedAt = new Date().toISOString();
+
+    // If rejected, refund points & stock
+    if (status === 'REJECTED' && oldStatus !== 'REJECTED') {
+      const user = this.getUser(red.studentId);
+      if (user) {
+        user.points = (user.points || 0) + (red.pointsSpent || 0);
+      }
+      const reward = this.getReward(red.rewardId);
+      if (reward) {
+        reward.stock += 1;
+      }
+    }
+    this.save();
+    return red;
   }
 }
 

@@ -30,11 +30,6 @@ export const FirstRunSetup: React.FC = () => {
       return;
     }
 
-    if (password.length < 10) {
-      setErrorMsg('Mật khẩu cần tối thiểu 10 ký tự để đảm bảo an toàn');
-      return;
-    }
-
     setIsSubmitting(true);
     const res = await setupFirstAdmin({
       username,
@@ -163,8 +158,7 @@ export const FirstRunSetup: React.FC = () => {
                 className="input-field"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
-                placeholder="Tối thiểu 10 ký tự"
-                minLength={10}
+                placeholder="Nhập mật khẩu quản trị"
                 maxLength={128}
                 required
               />
@@ -181,7 +175,6 @@ export const FirstRunSetup: React.FC = () => {
                 value={confirmPassword}
                 onChange={(e) => setConfirmPassword(e.target.value)}
                 placeholder="Nhập lại mật khẩu"
-                minLength={10}
                 maxLength={128}
               required
             />

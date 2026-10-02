@@ -24,8 +24,14 @@ function assertIdentityEligible(contest, user) {
     if (!contest.candidateIds.includes(user.id)) {
       throw new ContestPolicyError('NOT_A_CANDIDATE', 'Bạn không có tên trong danh sách thí sinh.');
     }
-  } else if (Array.isArray(contest.classIds) && contest.classIds.length > 0 && !contest.classIds.includes(user.classId)) {
-    throw new ContestPolicyError('CLASS_NOT_ELIGIBLE', 'Lớp của bạn không được tham gia kỳ thi này.');
+  } else if (Array.isArray(contest.classIds) && contest.classIds.length > 0) {
+    const userClasses = Array.isArray(user.classes) && user.classes.length > 0
+      ? user.classes
+      : (user.classId ? [user.classId] : []);
+    const hasMatchingClass = userClasses.some(clsId => contest.classIds.includes(clsId));
+    if (!hasMatchingClass) {
+      throw new ContestPolicyError('CLASS_NOT_ELIGIBLE', 'Lớp của bạn không được tham gia kỳ thi này.');
+    }
   }
 }
 

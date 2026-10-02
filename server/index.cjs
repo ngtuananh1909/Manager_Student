@@ -76,6 +76,9 @@ const loginAttempts = new Map(); // ip -> { count, lockedUntil }
 const submissionTimestamps = new Map(); // ip/userId -> lastTimestamp
 
 function loginRateLimiter(req, res, next) {
+  if (isLoopbackRequest(req)) {
+    return next();
+  }
   const ip = req.ip || req.connection.remoteAddress;
   const now = Date.now();
   const record = loginAttempts.get(ip);
@@ -232,10 +235,12 @@ app.post('/api/auth/login', loginRateLimiter, async (req, res) => {
     res.json(result);
   } catch (error) {
     if (error instanceof AuthError && error.code === 'INVALID_CREDENTIALS') {
-      const record = loginAttempts.get(ip) || { count: 0, lockedUntil: 0 };
-      record.count += 1;
-      if (record.count >= 5) record.lockedUntil = Date.now() + 5 * 60 * 1000;
-      loginAttempts.set(ip, record);
+      if (!isLoopbackRequest(req)) {
+        const record = loginAttempts.get(ip) || { count: 0, lockedUntil: 0 };
+        record.count += 1;
+        if (record.count >= 5) record.lockedUntil = Date.now() + 5 * 60 * 1000;
+        loginAttempts.set(ip, record);
+      }
     }
     handleAuthFailure(res, error);
   }
@@ -1479,6 +1484,14 @@ app.post('/api/contests', requireHost, (req, res) => {
       return res.status(400).json({ error: 'Tên kỳ thi không được để trống' });
     }
     let contestData = { ...req.body };
+
+    // Rule 58-60: RAM configuration must be between 240 MB and 272 MB, default 256 MB
+    let memoryLimit = contestData.memoryLimit !== undefined ? Number(contestData.memoryLimit) : 256;
+    if (isNaN(memoryLimit) || memoryLimit < 240 || memoryLimit > 272) {
+      return res.status(400).json({ error: 'Cấu hình RAM kỳ thi phải nằm trong khoảng 240 MB đến 272 MB (mặc định 256 MB)' });
+    }
+    contestData.memoryLimit = memoryLimit;
+
     if (Array.isArray(importedProblems) && importedProblems.length > 0) {
       contestData.problemIds = processContestImportedProblems(importedProblems, contestData.problemIds || []);
     }
@@ -1507,6 +1520,16 @@ app.put('/api/contests/:id', requireHost, (req, res) => {
   try {
     const { problemConfigs } = req.body;
     let updateData = { ...req.body };
+
+    // Rule 58-60: Validate RAM if provided
+    if (updateData.memoryLimit !== undefined) {
+      const memoryLimit = Number(updateData.memoryLimit);
+      if (isNaN(memoryLimit) || memoryLimit < 240 || memoryLimit > 272) {
+        return res.status(400).json({ error: 'Cấu hình RAM kỳ thi phải nằm trong khoảng 240 MB đến 272 MB (mặc định 256 MB)' });
+      }
+      updateData.memoryLimit = memoryLimit;
+    }
+
     if (Array.isArray(req.body.importedProblems) && req.body.importedProblems.length > 0) {
       const existing = db.getContest(req.params.id);
       const existingIds = updateData.problemIds || existing?.problemIds || [];
@@ -2030,6 +2053,163 @@ app.post('/api/update/broadcast', requireHost, (req, res) => {
     return res.json({ success: true, broadcasted: true, latest: latest.manifest });
   }
   res.json({ success: false, message: 'Chưa có file cập nhật nào trong thư mục updates.' });
+});
+
+// ==================== ACHIEVEMENTS API ====================
+// Get all achievements
+app.get('/api/achievements', (req, res) => {
+  try {
+    const list = db.getAchievements();
+    res.json(list);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Create new achievement (Admin only)
+app.post('/api/achievements', requireHost, (req, res) => {
+  try {
+    const { name } = req.body;
+    if (!name || !String(name).trim()) {
+      return res.status(400).json({ error: 'Tên thành tựu không được để trống' });
+    }
+    const created = db.createAchievement(req.body);
+    res.json(created);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Update achievement (Admin only)
+app.put('/api/achievements/:id', requireHost, (req, res) => {
+  try {
+    const updated = db.updateAchievement(req.params.id, req.body);
+    if (!updated) return res.status(404).json({ error: 'Thành tựu không tồn tại' });
+    res.json(updated);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Delete achievement (Admin only)
+app.delete('/api/achievements/:id', requireHost, (req, res) => {
+  try {
+    const success = db.deleteAchievement(req.params.id);
+    if (!success) return res.status(404).json({ error: 'Thành tựu không tồn tại' });
+    res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Get student's earned achievements
+app.get('/api/student/achievements', auth.authenticate, (req, res) => {
+  try {
+    // Automatically check and award any newly met achievements
+    db.checkAndAwardAchievements(req.user.id);
+    const earned = db.getStudentAchievements(req.user.id);
+    const user = db.getUser(req.user.id);
+    res.json({
+      earned,
+      points: user?.points || 0
+    });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ==================== REWARDS API ====================
+// Get rewards catalog
+app.get('/api/rewards', (req, res) => {
+  try {
+    const rewards = db.getRewards();
+    res.json(rewards);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Create reward (Admin only)
+app.post('/api/rewards', requireHost, (req, res) => {
+  try {
+    const { name } = req.body;
+    if (!name || !String(name).trim()) {
+      return res.status(400).json({ error: 'Tên phần thưởng không được để trống' });
+    }
+    const created = db.createReward(req.body);
+    res.json(created);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Update reward (Admin only)
+app.put('/api/rewards/:id', requireHost, (req, res) => {
+  try {
+    const updated = db.updateReward(req.params.id, req.body);
+    if (!updated) return res.status(404).json({ error: 'Phần thưởng không tồn tại' });
+    res.json(updated);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Delete reward (Admin only)
+app.delete('/api/rewards/:id', requireHost, (req, res) => {
+  try {
+    const success = db.deleteReward(req.params.id);
+    if (!success) return res.status(404).json({ error: 'Phần thưởng không tồn tại' });
+    res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Student redeem reward
+app.post('/api/rewards/:id/redeem', auth.authenticate, (req, res) => {
+  try {
+    const redemption = db.redeemReward(req.user.id, req.params.id);
+    const user = db.getUser(req.user.id);
+    // Broadcast redemption event to host
+    io.to('role:host').emit('reward:redeemed', redemption);
+    res.json({
+      success: true,
+      redemption,
+      remainingPoints: user?.points || 0
+    });
+  } catch (err) {
+    res.status(400).json({ error: err.message });
+  }
+});
+
+// Get redemptions list (host sees all, student sees own)
+app.get('/api/rewards/redemptions', auth.authenticate, (req, res) => {
+  try {
+    if (req.user.role === 'host') {
+      const redemptions = db.getRewardRedemptions();
+      res.json(redemptions);
+    } else {
+      const redemptions = db.getRewardRedemptions(req.user.id);
+      res.json(redemptions);
+    }
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Host updates redemption status (APPROVED, REJECTED, CLAIMED)
+app.put('/api/rewards/redemptions/:id/status', requireHost, (req, res) => {
+  try {
+    const { status } = req.body;
+    if (!['PENDING', 'APPROVED', 'CLAIMED', 'REJECTED'].includes(status)) {
+      return res.status(400).json({ error: 'Trạng thái không hợp lệ' });
+    }
+    const updated = db.updateRedemptionStatus(req.params.id, status);
+    if (!updated) return res.status(404).json({ error: 'Yêu cầu đổi quà không tồn tại' });
+    res.json(updated);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
 });
 
 // Start Server with graceful EADDRINUSE handling

@@ -42,8 +42,8 @@ function legacyPasswordMatches(password, storedHash) {
 
 async function hashPassword(password) {
   const normalized = String(password || '');
-  if (normalized.length < 10 || normalized.length > 128) {
-    throw new AuthError('INVALID_PASSWORD', 'Mật khẩu phải có từ 10 đến 128 ký tự.');
+  if (!normalized || normalized.length > 128) {
+    throw new AuthError('INVALID_PASSWORD', 'Mật khẩu không được để trống và tối đa 128 ký tự.');
   }
   return argon2.hash(normalized, ARGON2_OPTIONS);
 }
@@ -56,10 +56,12 @@ function safeUser(user) {
     fullName: user.fullName,
     role: user.role === 'host' ? 'host' : 'user',
     classId: user.classId || '',
+    classes: Array.isArray(user.classes) ? [...user.classes] : (user.classId ? [user.classId] : []),
     isLocked: !!user.isLocked,
     mustChangePassword: !!user.mustChangePassword,
     streak: Number(user.streak) || 0,
-    badges: Array.isArray(user.badges) ? [...user.badges] : []
+    badges: Array.isArray(user.badges) ? [...user.badges] : [],
+    points: Number(user.points) || 0
   };
 }
 

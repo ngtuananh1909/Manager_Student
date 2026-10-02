@@ -27,12 +27,22 @@ import {
   Copy,
   Check,
   FlaskConical,
-  RefreshCw
+  RefreshCw,
+  Search,
+  Filter,
+  Trophy
 } from 'lucide-react';
+import { Contest } from '../../types';
 
 export const ProblemManager: React.FC = () => {
   const { serverUrl } = useNetwork();
   const [problems, setProblems] = useState<Problem[]>([]);
+  const [contests, setContests] = useState<Contest[]>([]);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [selectedContestId, setSelectedContestId] = useState('all');
+  const [difficultyFilter, setDifficultyFilter] = useState('all');
+  const [testCaseSearchQuery, setTestCaseSearchQuery] = useState('');
+  const [testCaseTypeFilter, setTestCaseTypeFilter] = useState<'all' | 'sample' | 'official'>('all');
   const [loading, setLoading] = useState(true);
   const [isEditing, setIsEditing] = useState(false);
   const [currentProb, setCurrentProb] = useState<Partial<Problem>>({
@@ -109,14 +119,38 @@ export const ProblemManager: React.FC = () => {
 
   const fetchProblems = async () => {
     try {
-      const res = await apiFetch(`${serverUrl}/api/problems`);
-      if (res.ok) setProblems(await res.json());
+      const [probRes, contestRes] = await Promise.all([
+        apiFetch(`${serverUrl}/api/problems`),
+        apiFetch(`${serverUrl}/api/contests`)
+      ]);
+      if (probRes.ok) setProblems(await probRes.json());
+      if (contestRes.ok) setContests(await contestRes.json());
     } catch (e) {
       console.error(e);
     } finally {
       setLoading(false);
     }
   };
+
+  const filteredProblems = problems.filter(p => {
+    if (searchQuery.trim()) {
+      const q = searchQuery.toLowerCase().trim();
+      const matchCode = (p.code || '').toLowerCase().includes(q);
+      const matchTitle = (p.title || '').toLowerCase().includes(q);
+      const matchDesc = (p.description || '').toLowerCase().includes(q);
+      if (!matchCode && !matchTitle && !matchDesc) return false;
+    }
+    if (difficultyFilter !== 'all' && p.difficulty !== difficultyFilter) {
+      return false;
+    }
+    if (selectedContestId !== 'all') {
+      const targetContest = contests.find(c => c.id === selectedContestId);
+      if (!targetContest || !targetContest.problemIds?.includes(p.id)) {
+        return false;
+      }
+    }
+    return true;
+  });
 
   const handlePdfSelected = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -584,24 +618,93 @@ export const ProblemManager: React.FC = () => {
         </div>
       </div>
 
+      {/* Search & Filter Toolbar */}
+      <div className="glass-card" style={{ display: 'flex', gap: '12px', alignItems: 'center', marginBottom: '18px', padding: '12px 16px', flexWrap: 'wrap' }}>
+        <div style={{ position: 'relative', flex: 1, minWidth: '240px' }}>
+          <Search size={16} style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)' }} />
+          <input
+            type="text"
+            className="input-field"
+            placeholder="🔍 Tìm kiếm mã bài, tên bài, nội dung..."
+            value={searchQuery}
+            onChange={e => setSearchQuery(e.target.value)}
+            style={{ paddingLeft: '36px', width: '100%' }}
+          />
+        </div>
+
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+          <Trophy size={15} style={{ color: 'var(--accent-amber)' }} />
+          <span style={{ fontSize: '0.82rem', color: 'var(--text-secondary)', fontWeight: 600 }}>Kỳ thi:</span>
+          <select
+            className="input-field"
+            value={selectedContestId}
+            onChange={e => setSelectedContestId(e.target.value)}
+            style={{ minWidth: '180px' }}
+          >
+            <option value="all">Tất cả kỳ thi ({contests.length})</option>
+            {contests.map(c => (
+              <option key={c.id} value={c.id}>
+                {c.title} {c.category ? `[${c.category}]` : ''}
+              </option>
+            ))}
+          </select>
+        </div>
+
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+          <Filter size={15} style={{ color: 'var(--accent-cyan)' }} />
+          <span style={{ fontSize: '0.82rem', color: 'var(--text-secondary)', fontWeight: 600 }}>Mức độ:</span>
+          <select
+            className="input-field"
+            value={difficultyFilter}
+            onChange={e => setDifficultyFilter(e.target.value)}
+            style={{ minWidth: '120px' }}
+          >
+            <option value="all">Tất cả mức độ</option>
+            <option value="Dễ">Dễ</option>
+            <option value="Trung bình">Trung bình</option>
+            <option value="Khó">Khó</option>
+          </select>
+        </div>
+
+        {(searchQuery || selectedContestId !== 'all' || difficultyFilter !== 'all') && (
+          <button
+            className="btn btn-outline btn-sm"
+            onClick={() => { setSearchQuery(''); setSelectedContestId('all'); setDifficultyFilter('all'); }}
+            style={{ fontSize: '0.78rem' }}
+          >
+            Xóa bộ lọc
+          </button>
+        )}
+
+        <div style={{ marginLeft: 'auto', fontSize: '0.82rem', color: 'var(--text-muted)' }}>
+          Hiển thị <strong>{filteredProblems.length}</strong> / {problems.length} bài
+        </div>
+      </div>
+
       {/* Problems Master Table */}
       {loading ? (
         <div style={{ textAlign: 'center', padding: '60px', color: 'var(--text-muted)' }}>
           <RefreshCw size={28} className="animate-spin" style={{ color: 'var(--primary)', marginBottom: '10px' }} />
           <div style={{ fontSize: '0.88rem', fontWeight: 600 }}>Đang tải danh sách bài tập...</div>
         </div>
-      ) : problems.length === 0 ? (
+      ) : filteredProblems.length === 0 ? (
         <div className="glass-card" style={{ textAlign: 'center', padding: '60px', color: 'var(--text-muted)' }}>
           <FolderUp size={36} color="var(--primary-light)" style={{ marginBottom: '12px' }} />
-          <h3 style={{ fontSize: '1.1rem', marginBottom: '6px', color: 'var(--text-main)' }}>Chưa Có Bài Tập Nào</h3>
+          <h3 style={{ fontSize: '1.1rem', marginBottom: '6px', color: 'var(--text-main)' }}>
+            {problems.length === 0 ? 'Chưa Có Bài Tập Nào' : 'Không Tìm Thấy Bài Tập Nào Phù Hợp'}
+          </h3>
           <p style={{ fontSize: '0.85rem', maxWidth: '440px', margin: '0 auto 18px auto' }}>
-            Hệ thống đang ở trạng thái trống. Bạn có thể tự tạo bài mới hoặc nhập nhanh các bài mẫu từ thư mục <strong>TEST/</strong> có sẵn!
+            {problems.length === 0 
+              ? 'Hệ thống đang ở trạng thái trống. Bạn có thể tự tạo bài mới hoặc nhập nhanh các bài mẫu từ thư mục TEST/ có sẵn!'
+              : 'Hãy thử đổi từ khóa tìm kiếm hoặc bỏ chọn bộ lọc kỳ thi/độ khó.'}
           </p>
-          <div style={{ display: 'flex', gap: '10px', justifyContent: 'center' }}>
-            <button type="button" className="btn btn-secondary btn-sm" onClick={openSampleModal}>
-              <FolderDown size={14} /> Import Từ Thư Mục TEST (LUCKY, PLAN, TEAM)
-            </button>
-          </div>
+          {problems.length === 0 && (
+            <div style={{ display: 'flex', gap: '10px', justifyContent: 'center' }}>
+              <button type="button" className="btn btn-secondary btn-sm" onClick={openSampleModal}>
+                <FolderDown size={14} /> Import Từ Thư Mục TEST (LUCKY, PLAN, TEAM)
+              </button>
+            </div>
+          )}
         </div>
       ) : (
         <div className="arena-problem-table-container">
@@ -611,15 +714,18 @@ export const ProblemManager: React.FC = () => {
                 <th style={{ width: '48px', textAlign: 'center' }}>#</th>
                 <th style={{ width: '110px' }}>Mã Bài</th>
                 <th>Tên Đề Bài</th>
-                <th style={{ width: '110px' }}>Độ Khó</th>
-                <th style={{ width: '160px' }}>Giới Hạn</th>
-                <th style={{ width: '130px' }}>Bộ Test</th>
-                <th style={{ width: '100px' }}>Điểm</th>
-                <th style={{ width: '180px', textAlign: 'right' }}>Thao Tác</th>
+                <th style={{ width: '150px' }}>Kỳ Thi Áp Dụng</th>
+                <th style={{ width: '100px' }}>Độ Khó</th>
+                <th style={{ width: '150px' }}>Giới Hạn</th>
+                <th style={{ width: '120px' }}>Bộ Test</th>
+                <th style={{ width: '90px' }}>Điểm</th>
+                <th style={{ width: '170px', textAlign: 'right' }}>Thao Tác</th>
               </tr>
             </thead>
             <tbody>
-              {problems.map((prob, idx) => (
+              {filteredProblems.map((prob, idx) => {
+                const assignedContests = contests.filter(c => c.problemIds?.includes(prob.id));
+                return (
                 <tr key={prob.id} className="data-table-row">
                   <td style={{ textAlign: 'center', color: 'var(--text-muted)', fontWeight: 600 }}>{idx + 1}</td>
                   <td>
@@ -632,6 +738,22 @@ export const ProblemManager: React.FC = () => {
                         <span className="pdf-tag"><FileText size={10} /> PDF</span>
                       )}
                     </div>
+                  </td>
+                  <td>
+                    {assignedContests.length === 0 ? (
+                      <span style={{ color: 'var(--text-muted)', fontSize: '0.74rem' }}>Chưa gán</span>
+                    ) : (
+                      <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px' }}>
+                        {assignedContests.slice(0, 2).map(c => (
+                          <span key={c.id} className="badge badge-primary" style={{ fontSize: '0.7rem', padding: '2px 6px' }} title={c.title}>
+                            {c.title.length > 14 ? c.title.substring(0, 12) + '...' : c.title}
+                          </span>
+                        ))}
+                        {assignedContests.length > 2 && (
+                          <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)', alignSelf: 'center' }}>+{assignedContests.length - 2}</span>
+                        )}
+                      </div>
+                    )}
                   </td>
                   <td>
                     <span className={`badge ${
@@ -707,7 +829,8 @@ export const ProblemManager: React.FC = () => {
                     </div>
                   </td>
                 </tr>
-              ))}
+              );
+              })}
             </tbody>
           </table>
         </div>
@@ -1286,6 +1409,31 @@ export const ProblemManager: React.FC = () => {
               </button>
             </div>
 
+            {/* Test Case Search & Filter (Rule 54) */}
+            <div style={{ display: 'flex', gap: '8px', alignItems: 'center', marginBottom: '10px' }}>
+              <div style={{ position: 'relative', flex: 1 }}>
+                <Search size={14} style={{ position: 'absolute', left: '10px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)' }} />
+                <input
+                  type="text"
+                  className="input-field"
+                  placeholder="Tìm kiếm test case theo tên..."
+                  value={testCaseSearchQuery}
+                  onChange={e => setTestCaseSearchQuery(e.target.value)}
+                  style={{ paddingLeft: '30px', fontSize: '0.78rem', height: '32px', width: '100%' }}
+                />
+              </div>
+              <select
+                className="input-field"
+                value={testCaseTypeFilter}
+                onChange={e => setTestCaseTypeFilter(e.target.value as any)}
+                style={{ width: '160px', fontSize: '0.78rem', height: '32px' }}
+              >
+                <option value="all">Tất cả loại test</option>
+                <option value="sample">Test mẫu (công khai)</option>
+                <option value="official">Test chấm (bảo mật)</option>
+              </select>
+            </div>
+
             {/* Test Case Table */}
             <div style={{ flex: 1, overflowY: 'auto', border: '1px solid var(--border-subtle)', borderRadius: 'var(--radius-sm)' }}>
               {activeTestCases.length === 0 ? (
@@ -1307,7 +1455,18 @@ export const ProblemManager: React.FC = () => {
                     </tr>
                   </thead>
                   <tbody>
-                    {activeTestCases.map((tc, idx) => (
+                    {activeTestCases
+                      .filter((tc, i) => {
+                        if (testCaseSearchQuery.trim()) {
+                          const q = testCaseSearchQuery.toLowerCase().trim();
+                          const name = (tc.name || `test${i + 1}`).toLowerCase();
+                          if (!name.includes(q)) return false;
+                        }
+                        if (testCaseTypeFilter === 'sample' && !tc.isSample) return false;
+                        if (testCaseTypeFilter === 'official' && tc.isSample) return false;
+                        return true;
+                      })
+                      .map((tc, idx) => (
                       <tr key={tc.id || idx} style={{ borderBottom: '1px solid var(--border-subtle)' }} className="table-row-hover">
                         {/* Order & Move buttons */}
                         <td style={{ padding: '8px 10px', textAlign: 'center' }}>

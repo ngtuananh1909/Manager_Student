@@ -25,6 +25,7 @@ const PlagiarismView = lazy(() => import('./views/Teacher/PlagiarismView').then(
 const ClassManager = lazy(() => import('./views/Teacher/ClassManager').then(m => ({ default: m.ClassManager })));
 const StatisticsView = lazy(() => import('./views/Teacher/StatisticsView').then(m => ({ default: m.StatisticsView })));
 const JudgeSettings = lazy(() => import('./views/Teacher/JudgeSettings').then(m => ({ default: m.JudgeSettings })));
+const AchievementsManager = lazy(() => import('./views/Teacher/AchievementsManager').then(m => ({ default: m.AchievementsManager })));
 
 const ViewLoadingFallback = () => (
   <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '60vh', gap: '16px', color: 'var(--text-secondary)' }}>
@@ -101,7 +102,9 @@ const MainApp: React.FC = () => {
         {role === 'user' && (
           <div key={activeTab} className="view-animated-container" style={{ flex: 1, display: 'flex', flexDirection: 'column', height: '100%', overflow: 'hidden' }}>
             {(activeTab === 'contests' || activeTab === 'problems') && (
-              <ContestsView />
+              <ErrorBoundary fallbackTitle="Đã xảy ra sự cố trong Phòng Thi">
+                <ContestsView />
+              </ErrorBoundary>
             )}
             {activeTab === 'problem-detail' && selectedProblem && (
               <ProblemDetail problem={selectedProblem} onBack={handleBackToProblems} />
@@ -127,6 +130,7 @@ const MainApp: React.FC = () => {
             {activeTab === 'anti-cheat' && <PlagiarismView />}
             {activeTab === 'classes' && <ClassManager />}
             {activeTab === 'statistics' && <StatisticsView />}
+            {activeTab === 'achievements-manage' && <AchievementsManager />}
             {activeTab === 'settings' && <JudgeSettings />}
           </div>
         )}

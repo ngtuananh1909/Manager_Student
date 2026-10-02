@@ -137,6 +137,18 @@ class SubmissionQueue {
         this.io.to(`user:${user.id}`).emit('badge:unlocked', { userId: user.id, badges: user.badges });
       }
     }
+
+    // Check dynamic achievements system
+    try {
+      const newAchievements = db.checkAndAwardAchievements(userId);
+      if (newAchievements && newAchievements.length > 0 && this.io) {
+        for (const item of newAchievements) {
+          this.io.to(`user:${user.id}`).emit('achievement:unlocked', item);
+        }
+      }
+    } catch (e) {
+      console.error('[Achievements check error]', e);
+    }
   }
 }
 

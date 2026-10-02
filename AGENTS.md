@@ -1626,3 +1626,323 @@ Statistics = Result + Student + Enrollment
 **CURRENT SOURCE CODE > PROJECT_MAP**
 
 **REUSE CONTEXT > RESTART ANALYSIS**
+
+---
+
+# 42. 🏆 ACHIEVEMENTS / THÀNH TỰU
+
+SchoolJudge LAN phải hỗ trợ hệ thống:
+
+```text
+Thành tựu → Achievement
+```
+
+Thành tựu là dữ liệu có thể được quản trị bởi Admin.
+
+## 42.1. KHÔNG HARDCODE THÀNH TỰU
+
+Không được hard-code danh sách thành tựu trực tiếp trong React component.
+
+Không viết:
+
+```text
+const achievements = [...]
+```
+
+làm nguồn dữ liệu chính.
+
+Achievement phải là dữ liệu quản lý được.
+
+Ví dụ:
+
+```text
+Achievement
+{
+  id,
+  code,
+  name,
+  description,
+  icon,
+  condition,
+  points,
+  rarity,
+  isActive,
+  createdAt,
+  updatedAt
+}
+```
+
+Schema thực tế phải tuân theo database/storage hiện tại của project.
+
+---
+
+# 43. 🎖️ SỐ LƯỢNG THÀNH TỰU
+
+Hệ thống phải hỗ trợ ít nhất khoảng:
+
+```text
+100 ACHIEVEMENTS
+```
+
+Không giới hạn thiết kế ở 10–20 thành tựu.
+
+UI phải có khả năng:
+
+```text
+Search
+Filter
+Sort
+Pagination
+Create
+Edit
+Enable / Disable
+```
+
+khi số lượng thành tựu lớn.
+
+Không render toàn bộ 100+ thành tựu trong một UI nếu không cần thiết.
+
+---
+
+# 44. 👨💼 ADMIN — QUẢN LÝ THÀNH TỰU
+
+Admin có thể:
+
+```text
+Tạo thành tựu
+Sửa thành tựu
+Xóa / vô hiệu hóa
+Kích hoạt
+Đặt biểu tượng
+Đặt mô tả
+Đặt điều kiện đạt
+Đặt điểm
+Đặt độ hiếm
+```
+
+---
+
+# 45. 🧠 ACHIEVEMENT CONDITION
+
+Điều kiện Achievement phải được thiết kế theo hướng có thể mở rộng.
+
+Ví dụ:
+
+```text
+FIRST_SUBMISSION
+FIRST_AC
+AC_COUNT
+SUBMISSION_COUNT
+CONTEST_COUNT
+PERFECT_SCORE
+STREAK
+SOLVE_COUNT
+FAST_SOLVE
+PARTICIPATION
+```
+
+---
+
+# 46. 🏅 ACHIEVEMENT AWARD
+
+Khi học sinh đạt điều kiện:
+
+```text
+Student
+   ↓
+Achievement Engine
+   ↓
+Check condition
+   ↓
+Award Achievement
+```
+
+Không được trao cùng một Achievement nhiều lần nếu Achievement đó là loại `ONE_TIME`.
+
+Cần phân biệt `Achievement Definition` và `Student Achievement`.
+
+---
+
+# 47. 🎁 REWARDS / PHẦN THƯỞNG
+
+Achievement và Reward là hai khái niệm khác nhau.
+
+```text
+Achievement = Thành tích / huy hiệu đạt được
+Reward = Phần thưởng thực tế hoặc phần thưởng trong hệ thống
+```
+
+Ví dụ Reward:
+
+```text
+🥤 Ly nước
+🍪 Bịch bánh
+🍫 Thanh chocolate
+📚 Quyển vở
+🖊️ Bút
+🎒 Quà học tập
+🏅 Huy hiệu
+🎁 Quà đặc biệt
+```
+
+Không gắn cứng Reward vào Achievement.
+
+---
+
+# 48. 🎁 ADMIN — QUẢN LÝ PHẦN THƯỞNG
+
+Admin có thể:
+
+```text
+Tạo phần thưởng
+Sửa
+Xóa / vô hiệu hóa
+Đặt tên
+Đặt mô tả
+Đặt hình ảnh
+Đặt số lượng
+Đặt giá trị / điểm đổi
+Đặt trạng thái
+```
+
+---
+
+# 49. 🎁 REWARD INVENTORY
+
+Nếu Reward có số lượng giới hạn: `stock` phải được kiểm soát (`stock >= 0`).
+
+---
+
+# 50. 🏆 ACHIEVEMENT + REWARD KHÔNG ĐỒNG NHẤT
+
+Một Achievement có thể: không có Reward, 1 Reward, hoặc nhiều Reward để lựa chọn.
+
+---
+
+# 51. 📚 QUESTION BANK / NGÂN HÀNG BÀI TẬP
+
+Ngân hàng bài tập phải hỗ trợ phân loại theo: Kỳ thi, Khối, Lớp, Chủ đề, Mức độ, Tags.
+
+---
+
+# 52. 📝 PHÂN LOẠI BÀI TẬP THEO KỲ THI
+
+Mỗi bài tập trong ngân hàng có thể được liên kết với một hoặc nhiều kỳ thi. Không tạo duplicate Problem.
+
+---
+
+# 53. 🔎 TÌM KIẾM NGÂN HÀNG BÀI TẬP
+
+Question Bank phải có Search: Tìm theo Tên bài, Mã bài, Nội dung, Kỳ thi, Khối, Chủ đề, Tag.
+
+---
+
+# 54. 🧪 TEST CASE BANK / NGÂN HÀNG TEST CASES
+
+Test Cases cũng phải có khả năng: Search, Filter, Classify, Select, Import.
+
+---
+
+# 55. 🔗 PROBLEM ↔ TEST CASE ↔ EXAM
+
+Quan hệ logic: `Problem -> Test Cases -> Exam sử dụng Problem`.
+
+---
+
+# 56. 🏷️ EXAM CLASSIFICATION
+
+Mỗi kỳ thi có phân loại (Kiểm tra thường xuyên, Giữa kỳ, Cuối kỳ, Luyện tập, Thi HSG, Olympic, Khác).
+
+---
+
+# 57. 🔎 TÌM KIẾM + PHÂN LOẠI KỲ THI TRONG QUESTION BANK
+
+Ngân hàng bài tập và Test Cases phải hỗ trợ lọc theo kỳ thi.
+
+---
+
+# 58. 🧠 EXAM RAM LIMIT
+
+Khi tạo kỳ thi:
+- Giá trị mặc định: `256 MB`
+- Giá trị RAM hợp lệ phải nằm trong khoảng: `240 MB → 272 MB` (bước 4MB: 240, 244, 248, 252, 256, 260, 264, 268, 272).
+- Không cho phép giá trị `< 240 MB` hoặc `> 272 MB`.
+
+---
+
+# 59. ⚠️ RAM VALIDATION — SERVER SIDE
+
+Backend phải kiểm tra: `240 <= memoryLimit <= 272` (400 Bad Request nếu invalid).
+
+---
+
+# 60. 💾 RAM DEFAULT
+
+Khi Admin tạo Exam mới: `memoryLimit = 256 MB`.
+
+---
+
+# 61. ⚙️ PROBLEM MEMORY VS EXAM MEMORY
+
+Exam memory limit áp dụng cho kỳ thi, Problem memory limit áp dụng theo bài.
+
+---
+
+# 62. 🏆 LEADERBOARD — PHÂN LOẠI THEO KỲ THI
+
+Màn hình BXH phải bắt đầu bằng: `DANH SÁCH KỲ THI`. Chọn một kỳ thi -> Xem Leaderboard của kỳ thi đó.
+
+---
+
+# 63. 🏆 LEADERBOARD — EXAM CONTEXT
+
+Leaderboard luôn có context `examId`.
+
+---
+
+# 64. 🧑🎓 LEADERBOARD — STUDENT VIEW
+
+Giao diện Student: Chọn kỳ thi -> Xem BXH kỳ thi đó.
+
+---
+
+# 65. 🏆 LEADERBOARD — EXAM SELECTION
+
+Hỗ trợ Search Exam, Filter Loại, Khối, Trạng thái.
+
+---
+
+# 66. 🚫 VIRTUAL EXAM
+
+Không trộn kết quả REAL và VIRTUAL trong BXH chính thức.
+
+---
+
+# 67. 📊 LEADERBOARD — NO DUPLICATE STUDENT
+
+Một Student chỉ có 1 vị trí chính thức trong Leaderboard của một Exam dù thuộc nhiều lớp.
+
+---
+
+# 68. 🔗 MULTI-CLASS + LEADERBOARD
+
+Student thuộc nhiều lớp không làm duplicate kết quả trong Leaderboard.
+
+---
+
+# 69. 🧭 FEATURE BOUNDARIES
+
+Tách biệt các module: Admin (Achievements, Rewards), Question Bank (Search, Classification), Exam (RAM limit), Leaderboard (Exam selection).
+
+---
+
+# 70. 🔒 IMPLEMENTATION RULE & MINIMAL PATCH
+
+Tập trung đúng file, không scan toàn bộ project.
+
+---
+
+# 71. 🔒 BUSINESS RULE SUMMARY
+
+Tuân thủ toàn bộ 15 nguyên tắc nghiệp vụ cốt lõi đã nêu.
+

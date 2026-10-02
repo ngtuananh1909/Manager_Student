@@ -519,6 +519,7 @@ app.whenReady().then(() => {
     "connect-src 'self' http://localhost:* http://127.0.0.1:* ws://localhost:* ws://127.0.0.1:* http://*:4000 ws://*:4000 https: wss:",
     "img-src 'self' data: blob:",
     "font-src 'self' data: https://fonts.gstatic.com",
+    "worker-src 'self' blob:",
     "object-src 'none'",
     "frame-src 'none'",
     "base-uri 'self'"

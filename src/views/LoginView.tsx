@@ -231,7 +231,6 @@ export const LoginView: React.FC = () => {
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 style={{ paddingLeft: '38px' }}
-                minLength={10}
                 maxLength={128}
                 required
               />
