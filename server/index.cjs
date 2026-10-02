@@ -1402,27 +1402,14 @@ function processContestImportedProblems(importedProblems, existingProblemIds = [
       name: tc.name || `test${String(idx + 1).padStart(2, '0')}`,
       input: tc.input || '',
       expectedOutput: tc.expectedOutput || '',
-      isSample: tc.isSample !== undefined ? !!tc.isSample : idx === 0,
+      isSample: false,
       score: Number(tc.points) || autoScore
     }));
 
-    // Extract samples for students
-    const samples = (imp.samples && Array.isArray(imp.samples) && imp.samples.length > 0)
+    // Extract samples for students - strictly teacher-defined, never auto-generated from official test cases
+    const samples = (imp.samples && Array.isArray(imp.samples))
       ? imp.samples
-      : testCases.filter(tc => tc.isSample).map((tc, idx) => ({
-          id: `sample-${idx + 1}`,
-          name: `Ví dụ ${idx + 1}`,
-          input: tc.input || '',
-          output: tc.expectedOutput || ''
-        }));
-    if (samples.length === 0 && testCases.length > 0) {
-      samples.push({
-        id: 'sample-1',
-        name: 'Ví dụ 1',
-        input: testCases[0].input || '',
-        output: testCases[0].expectedOutput || ''
-      });
-    }
+      : (existing && Array.isArray(existing.samples) ? existing.samples : []);
 
     if (existing) {
       db.updateProblem(existing.id, {

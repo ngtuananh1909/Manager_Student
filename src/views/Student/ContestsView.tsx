@@ -337,88 +337,12 @@ export const ContestsView: React.FC = () => {
 
   // If student is currently coding a specific problem inside the contest arena:
   if (activeContest && activeProblem) {
+    const antiCheatWarning = activeContest.mode === 'online' && activeContest.antiCheat?.preventTabSwitch
+      ? `Cảnh báo rời tab: ${tabViolations}/${activeContest.antiCheat.maxTabViolations}`
+      : null;
+
     return (
-      <div style={{ flex: 1, display: 'flex', flexDirection: 'column' }}>
-        {/* Contest Header Banner */}
-        <div style={{ 
-          background: activeVirtualSession ? 'linear-gradient(90deg, #1e1b4b 0%, #0f172a 100%)' : 'var(--bg-surface-elevated)', 
-          borderBottom: activeVirtualSession ? '1px solid rgba(129, 140, 248, 0.3)' : '1px solid var(--border-subtle)', 
-          padding: '8px 20px', 
-          display: 'flex', 
-          alignItems: 'center', 
-          justifyContent: 'space-between',
-          fontSize: '0.84rem'
-        }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-            <button 
-              className="btn btn-outline btn-sm"
-              onClick={() => setActiveProblem(null)}
-              style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}
-            >
-              <ArrowLeft size={14} /> Danh Sách Bài Thi
-            </button>
-            <span style={{ fontWeight: 700, color: activeVirtualSession ? '#a5b4fc' : 'var(--accent-cyan)' }}>
-              [{activeContest.title}]
-            </span>
-            {activeVirtualSession && (
-              <span style={{ 
-                fontSize: '0.72rem', 
-                padding: '2px 8px', 
-                borderRadius: '12px', 
-                background: 'rgba(99, 102, 241, 0.25)', 
-                color: '#c7d2fe', 
-                fontWeight: 700,
-                border: '1px solid rgba(129, 140, 248, 0.4)',
-                display: 'inline-flex',
-                alignItems: 'center',
-                gap: '4px'
-              }}>
-                <Sparkles size={11} /> THI ẢO
-              </span>
-            )}
-          </div>
-
-          <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
-            {remainingSeconds !== null && (
-              <div style={{ 
-                display: 'flex', 
-                alignItems: 'center', 
-                gap: '6px', 
-                fontFamily: 'var(--font-mono)', 
-                fontWeight: 800, 
-                fontSize: '1rem',
-                color: remainingSeconds < 300 ? 'var(--accent-rose)' : 'var(--accent-amber)'
-              }}>
-                <Timer size={16} />
-                <span>{formatTimer(remainingSeconds)}</span>
-              </div>
-            )}
-
-            {activeVirtualSession && (
-              <button 
-                className="btn btn-danger btn-sm"
-                style={{ fontSize: '0.74rem', padding: '3px 8px' }}
-                onClick={handleFinishVirtualSession}
-              >
-                Kết Thúc Phiên Ảo
-              </button>
-            )}
-
-            {activeContest.mode === 'online' && activeContest.antiCheat?.preventTabSwitch && (
-              <span style={{ 
-                fontSize: '0.74rem', 
-                padding: '2px 8px', 
-                borderRadius: '4px',
-                background: tabViolations > 0 ? 'rgba(244,63,94,0.15)' : 'rgba(56,189,248,0.15)',
-                color: tabViolations > 0 ? '#f87171' : 'var(--accent-cyan)',
-                fontWeight: 600
-              }}>
-                Cảnh báo rời tab: {tabViolations}/{activeContest.antiCheat.maxTabViolations}
-              </span>
-            )}
-          </div>
-        </div>
-
+      <div style={{ width: '100%', height: '100%', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
         {/* Problem Detail view */}
         <ProblemDetail 
           problem={activeProblem}
@@ -431,6 +355,9 @@ export const ContestsView: React.FC = () => {
           remainingSeconds={remainingSeconds}
           contestDocUrl={activeContest.pdfUrl}
           contestDocFileName={activeContest.pdfFileName}
+          isVirtualSession={!!activeVirtualSession}
+          onFinishVirtualSession={handleFinishVirtualSession}
+          antiCheatWarning={antiCheatWarning}
         />
 
         {/* Violation Modal */}

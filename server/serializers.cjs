@@ -2,12 +2,7 @@ function sanitizeProblemForStudent(problem) {
   if (!problem) return null;
   const samples = Array.isArray(problem.samples) && problem.samples.length > 0
     ? problem.samples.map(sample => ({ ...sample }))
-    : (problem.testCases || []).filter(test => test.isSample).map((test, index) => ({
-        id: `sample-${index + 1}`,
-        name: `Ví dụ ${index + 1}`,
-        input: test.input || '',
-        output: test.expectedOutput || ''
-      }));
+    : [];
 
   return {
     id: problem.id,

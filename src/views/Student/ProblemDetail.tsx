@@ -29,7 +29,9 @@ import {
   HelpCircle,
   Code2,
   FileCode2,
-  Shield
+  Shield,
+  Save,
+  LogOut
 } from 'lucide-react';
 
 interface Props {
@@ -43,6 +45,9 @@ interface Props {
   remainingSeconds?: number | null;
   contestDocUrl?: string;
   contestDocFileName?: string;
+  isVirtualSession?: boolean;
+  onFinishVirtualSession?: () => void;
+  antiCheatWarning?: string | null;
 }
 
 export const ProblemDetail: React.FC<Props> = ({ 
@@ -55,7 +60,10 @@ export const ProblemDetail: React.FC<Props> = ({
   contestTitle,
   remainingSeconds,
   contestDocUrl,
-  contestDocFileName
+  contestDocFileName,
+  isVirtualSession = false,
+  onFinishVirtualSession,
+  antiCheatWarning = null
 }) => {
   const { user } = useAuth();
   const { serverUrl, socket, isConnected } = useNetwork();
@@ -351,15 +359,38 @@ export const ProblemDetail: React.FC<Props> = ({
     return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
   };
 
+  const handleManualSave = useCallback(() => {
+    flushCodeDraft();
+    const now = new Date();
+    const pad = (n: number) => n < 10 ? '0' + n : n;
+    setCodeSaveStatus(`Đã lưu thành công ${pad(now.getHours())}:${pad(now.getMinutes())}:${pad(now.getSeconds())}`);
+  }, [flushCodeDraft]);
+
+  // Global keyboard shortcuts: Ctrl+S (Save draft), Ctrl+Enter (Run custom)
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 's') {
+        e.preventDefault();
+        handleManualSave();
+      } else if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
+        e.preventDefault();
+        handleRunCustom();
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [handleManualSave, handleRunCustom]);
+
   // Safe sample list (strictly from problem.samples, NEVER raw testcases)
   const samples = problem.samples || [];
 
   return (
     <div style={{ flex: 1, display: 'flex', flexDirection: 'column', height: '100%', overflow: 'hidden', background: 'var(--bg-app)' }}>
-      {/* 1. TOP HEADER & CONTEST NAVIGATION BAR (40px) */}
+      {/* 1. TOP HEADER & CONTEST NAVIGATION BAR (Sticky Top, 42px) */}
       <div style={{ 
-        height: '40px',
-        minHeight: '40px', 
+        height: '42px',
+        minHeight: '42px',
+        flexShrink: 0,
         background: 'var(--bg-surface)', 
         borderBottom: '1px solid var(--border-subtle)',
         display: 'flex',
@@ -367,7 +398,7 @@ export const ProblemDetail: React.FC<Props> = ({
         justifyContent: 'space-between',
         padding: '0 12px',
         gap: '8px',
-        zIndex: 10
+        zIndex: 20
       }}>
         {/* Left: Back & Problem Switcher Tabs */}
         <div style={{ display: 'flex', alignItems: 'center', gap: '8px', overflow: 'hidden' }}>
@@ -381,8 +412,40 @@ export const ProblemDetail: React.FC<Props> = ({
           </button>
 
           {contestTitle && (
-            <span style={{ fontSize: '0.78rem', fontWeight: 600, color: 'var(--text-muted)', whiteSpace: 'nowrap' }}>
+            <span style={{ fontSize: '0.78rem', fontWeight: 700, color: 'var(--text-main)', whiteSpace: 'nowrap' }}>
               [{contestTitle}]
+            </span>
+          )}
+
+          {isVirtualSession && (
+            <span style={{ 
+              fontSize: '0.72rem', 
+              padding: '2px 8px', 
+              borderRadius: '12px', 
+              background: 'rgba(99, 102, 241, 0.25)', 
+              color: '#c7d2fe', 
+              fontWeight: 700, 
+              border: '1px solid rgba(129, 140, 248, 0.4)', 
+              display: 'inline-flex', 
+              alignItems: 'center', 
+              gap: '4px' 
+            }}>
+              <Sparkles size={11} /> THI ẢO
+            </span>
+          )}
+
+          {antiCheatWarning && (
+            <span style={{ 
+              fontSize: '0.72rem', 
+              padding: '2px 8px', 
+              borderRadius: '4px', 
+              background: 'rgba(244,63,94,0.15)', 
+              color: '#f87171', 
+              fontWeight: 600,
+              border: '1px solid rgba(244,63,94,0.3)',
+              whiteSpace: 'nowrap'
+            }}>
+              {antiCheatWarning}
             </span>
           )}
 
@@ -408,19 +471,13 @@ export const ProblemDetail: React.FC<Props> = ({
           )}
         </div>
 
-        {/* Right: Presets, Auto-save status, Timer & Run / Submit Action Buttons */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+        {/* Right: Presets, Timer & Virtual finish button */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexShrink: 0 }}>
           {/* Quick Layout Presets */}
           <div className="linear-tabs" title="Tỉ lệ chia màn hình Đề / Code (nhấp đúp thanh ngăn để về 50/50)">
             <button type="button" className={`linear-tab-btn ${splitPercent === 30 ? 'active' : ''}`} onClick={() => setSplitPercent(30)} style={{ padding: '2px 6px', fontSize: '0.7rem' }}>30/70</button>
             <button type="button" className={`linear-tab-btn ${splitPercent === 50 || splitPercent === null ? 'active' : ''}`} onClick={() => setSplitPercent(50)} style={{ padding: '2px 6px', fontSize: '0.7rem' }}>50/50</button>
             <button type="button" className={`linear-tab-btn ${splitPercent === 70 ? 'active' : ''}`} onClick={() => setSplitPercent(70)} style={{ padding: '2px 6px', fontSize: '0.7rem' }}>70/30</button>
-          </div>
-
-          {/* Auto-save status indicator */}
-          <div style={{ display: 'inline-flex', alignItems: 'center', gap: '5px', fontSize: '0.72rem', color: isConnected ? 'var(--text-muted)' : 'var(--accent-amber)', padding: '2px 6px' }}>
-            <span style={{ width: '5px', height: '5px', borderRadius: '50%', background: isConnected ? 'var(--accent-emerald)' : 'var(--accent-amber)' }}></span>
-            <span>{isConnected ? codeSaveStatus : 'Mất mạng'}</span>
           </div>
 
           {/* Contest Countdown Timer */}
@@ -435,58 +492,30 @@ export const ProblemDetail: React.FC<Props> = ({
               border: `1px solid ${remainingSeconds < 300 ? 'rgba(239, 68, 68, 0.4)' : 'rgba(56, 189, 248, 0.3)'}`,
               color: remainingSeconds < 300 ? 'var(--accent-rose)' : 'var(--accent-cyan)',
               fontFamily: 'var(--font-mono)',
-              fontWeight: 700,
-              fontSize: '0.82rem'
+              fontWeight: 800,
+              fontSize: '0.85rem'
             }}>
               <Clock size={13} />
               <span>{formatTime(remainingSeconds)}</span>
             </div>
           )}
 
-          {/* Action: Custom Run */}
-          <button 
-            type="button"
-            className="btn btn-secondary btn-sm" 
-            onClick={handleRunCustom}
-            disabled={isRunningCustom || isSubmitting}
-            title="Chạy thử code với input bạn tự nhập (Ctrl + Enter)"
-            style={{
-              padding: '4px 10px',
-              fontWeight: 600,
-              fontSize: '0.78rem',
-              display: 'inline-flex',
-              alignItems: 'center',
-              gap: '5px'
-            }}
-          >
-            {isRunningCustom ? <RefreshCw size={13} className="animate-spin" /> : <Play size={13} fill="currentColor" />}
-            {isRunningCustom ? 'Đang chạy...' : 'Chạy Thử'}
-          </button>
-
-          {/* Action: Submit Official */}
-          <button 
-            type="button"
-            className="btn btn-primary btn-sm" 
-            onClick={handleSubmitCode}
-            disabled={isSubmitting || isRunningCustom}
-            title="Nộp bài chính thức lên máy chủ để chấm điểm"
-            style={{
-              padding: '4px 12px',
-              fontWeight: 700,
-              fontSize: '0.78rem',
-              display: 'inline-flex',
-              alignItems: 'center',
-              gap: '5px'
-            }}
-          >
-            {isSubmitting ? <RefreshCw size={13} className="animate-spin" /> : <Send size={13} />}
-            {isSubmitting ? 'Đang Chấm...' : 'Nộp Bài'}
-          </button>
+          {isVirtualSession && onFinishVirtualSession && (
+            <button 
+              type="button"
+              className="btn btn-danger btn-sm"
+              style={{ fontSize: '0.74rem', padding: '3px 8px', display: 'inline-flex', alignItems: 'center', gap: '4px' }}
+              onClick={onFinishVirtualSession}
+              title="Kết thúc sớm phiên thi ảo"
+            >
+              <LogOut size={12} /> Kết Thúc Phiên Ảo
+            </button>
+          )}
         </div>
       </div>
 
       {/* 2. MAIN SPLIT BODY: RESIZABLE SPLIT PANE */}
-      <div style={{ flex: 1, height: 'calc(100% - 40px)', overflow: 'hidden' }}>
+      <div style={{ flex: 1, minHeight: 0, overflow: 'hidden', position: 'relative' }}>
         <ResizableSplitPane
           controlledPercent={splitPercent}
           onPercentChange={() => setSplitPercent(null)}
@@ -688,26 +717,26 @@ export const ProblemDetail: React.FC<Props> = ({
             </div>
           )}
 
-          {/* VÍ DỤ MINH HỌA (SAMPLES) */}
-          <div style={{ marginTop: '8px' }}>
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '8px' }}>
-              <h3 style={{ 
-                fontSize: '0.98rem', 
-                fontWeight: 700, 
-                color: 'var(--text-main)', 
-                display: 'flex', 
-                alignItems: 'center', 
-                gap: '8px', 
-                margin: 0 
-              }}>
-                <Code2 size={18} color="var(--primary-light)" /> VÍ DỤ MINH HỌA (SAMPLES)
-              </h3>
-              <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>
-                (Bộ test chấm chính thức được bảo mật trên máy chủ)
-              </span>
-            </div>
+          {/* VÍ DỤ MINH HỌA (SAMPLES) - CHỈ HIỂN THỊ KHI GIÁO VIÊN CHỦ ĐỘNG NHẬP SAMPLES */}
+          {samples.length > 0 && (
+            <div style={{ marginTop: '8px' }}>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '8px' }}>
+                <h3 style={{ 
+                  fontSize: '0.98rem', 
+                  fontWeight: 700, 
+                  color: 'var(--text-main)', 
+                  display: 'flex', 
+                  alignItems: 'center', 
+                  gap: '8px', 
+                  margin: 0 
+                }}>
+                  <Code2 size={18} color="var(--primary-light)" /> VÍ DỤ MINH HỌA (SAMPLES)
+                </h3>
+                <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>
+                  (Bộ test chấm chính thức được bảo mật trên máy chủ)
+                </span>
+              </div>
 
-            {samples.length > 0 ? (
               <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
                 {samples.map((sample, idx) => (
                   <div 
@@ -865,12 +894,8 @@ export const ProblemDetail: React.FC<Props> = ({
                   </div>
                 ))}
               </div>
-            ) : (
-              <div style={{ background: 'var(--bg-surface)', padding: '14px', borderRadius: 'var(--radius-sm)', border: '1px dashed var(--border-subtle)', color: 'var(--text-muted)', fontSize: '0.82rem', textAlign: 'center' }}>
-                (Đề bài không có ví dụ riêng biệt, bạn có thể tự nhập input tùy ý vào ô Chạy Thử bên dưới)
-              </div>
-            )}
-          </div>
+            </div>
+          )}
         </div>
       }
       right={
@@ -1227,6 +1252,113 @@ export const ProblemDetail: React.FC<Props> = ({
         </div>
       }
     />
+  </div>
+
+  {/* 3. STICKY BOTTOM ACTION BAR */}
+  <div style={{
+    height: '48px',
+    minHeight: '48px',
+    flexShrink: 0,
+    background: 'var(--bg-surface-elevated)',
+    borderTop: '1px solid var(--border-medium)',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    padding: '0 16px',
+    zIndex: 20
+  }}>
+    {/* Left: Save status & shortcuts */}
+    <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+      <div style={{
+        display: 'inline-flex',
+        alignItems: 'center',
+        gap: '6px',
+        fontSize: '0.78rem',
+        color: isConnected ? 'var(--text-secondary)' : 'var(--accent-amber)',
+        background: 'var(--bg-surface)',
+        padding: '4px 10px',
+        borderRadius: '6px',
+        border: '1px solid var(--border-subtle)'
+      }}>
+        <span style={{
+          width: '6px',
+          height: '6px',
+          borderRadius: '50%',
+          background: isConnected ? 'var(--accent-emerald)' : 'var(--accent-amber)',
+          boxShadow: isConnected ? '0 0 6px rgba(16, 185, 129, 0.4)' : 'none'
+        }} />
+        <span>{isConnected ? codeSaveStatus : 'Mất mạng (Đã lưu offline)'}</span>
+      </div>
+
+      <span style={{ fontSize: '0.74rem', color: 'var(--text-muted)', display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
+        <Save size={12} /> <kbd style={{ padding: '1px 5px', background: 'var(--bg-surface)', border: '1px solid var(--border-subtle)', borderRadius: '3px', fontSize: '0.7rem' }}>Ctrl+S</kbd> Lưu nháp
+        <span style={{ margin: '0 4px', opacity: 0.4 }}>•</span>
+        <Play size={12} /> <kbd style={{ padding: '1px 5px', background: 'var(--bg-surface)', border: '1px solid var(--border-subtle)', borderRadius: '3px', fontSize: '0.7rem' }}>Ctrl+Enter</kbd> Chạy thử
+      </span>
+    </div>
+
+    {/* Right: Actions */}
+    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+      {/* Button: Lưu Bài */}
+      <button
+        type="button"
+        className="btn btn-outline btn-sm"
+        onClick={handleManualSave}
+        title="Lưu lại bản nháp hiện tại của bài này (Ctrl+S)"
+        style={{
+          padding: '6px 12px',
+          fontWeight: 600,
+          fontSize: '0.8rem',
+          display: 'inline-flex',
+          alignItems: 'center',
+          gap: '6px'
+        }}
+      >
+        <Save size={14} /> Lưu Bài
+      </button>
+
+      {/* Button: Chạy Thử */}
+      <button
+        type="button"
+        className="btn btn-secondary btn-sm"
+        onClick={handleRunCustom}
+        disabled={isRunningCustom || isSubmitting}
+        title="Chạy thử code với input bạn tự nhập (Ctrl + Enter)"
+        style={{
+          padding: '6px 14px',
+          fontWeight: 600,
+          fontSize: '0.8rem',
+          display: 'inline-flex',
+          alignItems: 'center',
+          gap: '6px'
+        }}
+      >
+        {isRunningCustom ? <RefreshCw size={14} className="animate-spin" /> : <Play size={14} fill="currentColor" />}
+        {isRunningCustom ? 'Đang chạy...' : 'Chạy Thử'}
+      </button>
+
+      {/* Button: Nộp Bài */}
+      <button
+        type="button"
+        className="btn btn-primary btn-sm"
+        onClick={handleSubmitCode}
+        disabled={isSubmitting || isRunningCustom}
+        title="Nộp bài chính thức lên máy chủ để chấm điểm"
+        style={{
+          padding: '6px 16px',
+          fontWeight: 700,
+          fontSize: '0.8rem',
+          display: 'inline-flex',
+          alignItems: 'center',
+          gap: '6px',
+          background: 'linear-gradient(135deg, var(--primary) 0%, #4338ca 100%)',
+          boxShadow: '0 2px 8px rgba(99, 102, 241, 0.35)'
+        }}
+      >
+        {isSubmitting ? <RefreshCw size={14} className="animate-spin" /> : <Send size={14} />}
+        {isSubmitting ? 'Đang Chấm...' : 'Nộp Bài'}
+      </button>
+    </div>
   </div>
 </div>
 );

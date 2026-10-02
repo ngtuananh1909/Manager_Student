@@ -82,9 +82,12 @@ test('student serializers expose explicit samples but no hidden or privileged fi
     code: 'SUM',
     title: 'Sum',
     points: 100,
+    samples: [
+      { id: 'sample-1', name: 'Ví dụ 1', input: '1 2', output: '3' }
+    ],
     testCases: [
       { id: 'hidden', input: 'secret', expectedOutput: 'secret-out', isSample: false },
-      { id: 'sample', input: '1 2', expectedOutput: '3', isSample: true }
+      { id: 'official', input: '1 2', expectedOutput: '3' }
     ],
     _pdfDiskPath: '/secret/path'
   });

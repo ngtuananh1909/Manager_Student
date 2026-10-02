@@ -39,7 +39,8 @@ import {
   ChevronRight,
   Printer,
   FileSpreadsheet,
-  Save
+  Save,
+  Code2
 } from 'lucide-react';
 
 export const ContestManager: React.FC = () => {
@@ -99,10 +100,12 @@ export const ContestManager: React.FC = () => {
     points?: number;
     timeLimit?: number; // seconds
     memoryLimit?: number; // MB
+    samples?: { input: string; output: string; explanation?: string }[];
     testCases: { name: string; input: string; expectedOutput: string; points: number }[];
     status: 'valid' | 'invalid';
     error?: string;
   }[]>([]);
+  const [sampleInputs, setSampleInputs] = useState<Record<string, { input: string; output: string; explanation?: string }>>({});
   const [folderErrors, setFolderErrors] = useState<string[]>([]);
   const [folderSuccessMsg, setFolderSuccessMsg] = useState<string | null>(null);
   const [expandedProblemCodes, setExpandedProblemCodes] = useState<Set<string>>(new Set());
@@ -458,6 +461,7 @@ export const ContestManager: React.FC = () => {
       points: p.points || Math.round(contestTotal / (contestProbs.length || 1)),
       timeLimit: Math.round(((p.timeLimit || 1000) / 1000) * 10) / 10,
       memoryLimit: p.memoryLimit || 256,
+      samples: Array.isArray(p.samples) ? p.samples : [],
       testCases: (p.testCases || []).map((tc, idx) => ({
         name: tc.name || `test${String(idx + 1).padStart(2, '0')}`,
         input: tc.input || '',
@@ -781,6 +785,41 @@ export const ContestManager: React.FC = () => {
     }
   };
 
+  const handleAddSampleToProblem = (probCode: string) => {
+    const inputVal = sampleInputs[probCode]?.input || '';
+    const outputVal = sampleInputs[probCode]?.output || '';
+    const explanationVal = sampleInputs[probCode]?.explanation || '';
+    if (!inputVal.trim() && !outputVal.trim()) {
+      alert('Vui lòng nhập Input hoặc Output cho Test mẫu');
+      return;
+    }
+    setImportedFolderProblems(prev => prev.map(p => {
+      if (p.code.toLowerCase() === probCode.toLowerCase()) {
+        const samples = [...(p.samples || []), {
+          input: inputVal,
+          output: outputVal,
+          explanation: explanationVal.trim() || undefined
+        }];
+        return { ...p, samples };
+      }
+      return p;
+    }));
+    setSampleInputs(prev => ({
+      ...prev,
+      [probCode]: { input: '', output: '', explanation: '' }
+    }));
+  };
+
+  const handleDeleteSampleFromProblem = (probCode: string, sampleIdx: number) => {
+    setImportedFolderProblems(prev => prev.map(p => {
+      if (p.code.toLowerCase() === probCode.toLowerCase()) {
+        const samples = (p.samples || []).filter((_, idx) => idx !== sampleIdx);
+        return { ...p, samples };
+      }
+      return p;
+    }));
+  };
+
   const updateProblemConfig = (probCode: string, field: 'points' | 'timeLimit' | 'memoryLimit' | 'title', value: any) => {
     setImportedFolderProblems(prev => prev.map(p => {
       if (p.code.toLowerCase() === probCode.toLowerCase()) {
@@ -917,6 +956,7 @@ export const ContestManager: React.FC = () => {
           points: Number(p.points) || Math.round(contestTotal / importedFolderProblems.length),
           timeLimit: Math.round((Number(p.timeLimit) || 1) * 1000), // convert seconds to ms
           memoryLimit: Number(p.memoryLimit) || 256,
+          samples: Array.isArray(p.samples) ? p.samples : [],
           testCases: p.testCases
         })),
         startTime: parseDateSafe(formContest.startTime, Date.now()),
@@ -2588,13 +2628,115 @@ export const ContestManager: React.FC = () => {
                                   </td>
                                 </tr>
 
-                                {/* Tree view of test cases */}
+                                {/* Tree view of test cases and sample tests */}
                                 {isExpanded && (
                                   <tr>
-                                    <td colSpan={6} style={{ padding: '12px 18px 14px 34px', background: 'rgba(0, 0, 0, 0.25)', borderBottom: '1px solid var(--border-subtle)' }}>
+                                    <td colSpan={6} style={{ padding: '14px 18px 16px 34px', background: 'rgba(0, 0, 0, 0.25)', borderBottom: '1px solid var(--border-subtle)' }}>
+                                      {/* SECTION 1: TEST MẪU (SAMPLES) — TÙY CHỌN */}
+                                      <div style={{
+                                        marginBottom: '16px',
+                                        background: 'rgba(56, 189, 248, 0.05)',
+                                        border: '1px solid rgba(56, 189, 248, 0.2)',
+                                        borderRadius: '6px',
+                                        padding: '12px 14px'
+                                      }}>
+                                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '8px' }}>
+                                          <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontWeight: 700, color: 'var(--accent-cyan)', fontSize: '0.84rem' }}>
+                                            <Code2 size={15} /> 🧪 TEST MẪU (SAMPLES) — TÙY CHỌN CHO HỌC SINH
+                                          </div>
+                                          <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>
+                                            {prob.samples && prob.samples.length > 0 ? `${prob.samples.length} test mẫu` : 'Không có test mẫu'}
+                                          </span>
+                                        </div>
+                                        <div style={{ fontSize: '0.74rem', color: 'var(--text-secondary)', marginBottom: '10px' }}>
+                                          Test mẫu do giáo viên tự nhập để minh họa đề bài. Nếu không nhập, học sinh sẽ <strong>không thấy</strong> mục Test mẫu. Test mẫu <strong>không dùng để chấm điểm</strong>.
+                                        </div>
+                                        {prob.samples && prob.samples.length > 0 && (
+                                          <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', marginBottom: '12px' }}>
+                                            {prob.samples.map((s, sIdx) => (
+                                              <div key={sIdx} style={{
+                                                background: 'var(--bg-surface)',
+                                                border: '1px solid var(--border-subtle)',
+                                                borderRadius: '4px',
+                                                padding: '8px 10px',
+                                                display: 'grid',
+                                                gridTemplateColumns: '1fr 1fr auto',
+                                                gap: '10px',
+                                                alignItems: 'start'
+                                              }}>
+                                                <div>
+                                                  <span style={{ fontSize: '0.7rem', fontWeight: 700, color: 'var(--accent-cyan)' }}>Input mẫu {sIdx + 1}:</span>
+                                                  <pre style={{ margin: '3px 0 0', background: '#090d16', padding: '4px 6px', borderRadius: '3px', fontSize: '0.76rem', whiteSpace: 'pre-wrap', maxHeight: '80px', overflowY: 'auto' }}>
+                                                    {s.input || '(Trống)'}
+                                                  </pre>
+                                                </div>
+                                                <div>
+                                                  <span style={{ fontSize: '0.7rem', fontWeight: 700, color: 'var(--accent-emerald)' }}>Output mẫu {sIdx + 1}:</span>
+                                                  <pre style={{ margin: '3px 0 0', background: '#090d16', padding: '4px 6px', borderRadius: '3px', fontSize: '0.76rem', whiteSpace: 'pre-wrap', maxHeight: '80px', overflowY: 'auto' }}>
+                                                    {s.output || '(Trống)'}
+                                                  </pre>
+                                                </div>
+                                                <button
+                                                  type="button"
+                                                  className="btn btn-outline btn-sm"
+                                                  onClick={() => handleDeleteSampleFromProblem(prob.code, sIdx)}
+                                                  style={{ color: 'var(--accent-rose)', borderColor: 'rgba(239,68,68,0.3)', padding: '2px 6px', fontSize: '0.72rem', marginTop: '16px' }}
+                                                  title="Xóa test mẫu này"
+                                                >
+                                                  <Trash2 size={12} />
+                                                </button>
+                                              </div>
+                                            ))}
+                                          </div>
+                                        )}
+                                        <div style={{ background: 'rgba(0,0,0,0.2)', padding: '8px 10px', borderRadius: '4px', border: '1px dashed var(--border-subtle)' }}>
+                                          <div style={{ fontSize: '0.74rem', fontWeight: 600, color: 'var(--text-main)', marginBottom: '6px' }}>
+                                            + Thêm Test Mẫu mới cho bài {prob.code}:
+                                          </div>
+                                          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px', marginBottom: '6px' }}>
+                                            <div>
+                                              <label style={{ fontSize: '0.7rem', color: 'var(--text-muted)', display: 'block', marginBottom: '2px' }}>Input mẫu:</label>
+                                              <textarea
+                                                className="input-field"
+                                                rows={2}
+                                                placeholder="Ví dụ: 5 7"
+                                                value={sampleInputs[prob.code]?.input || ''}
+                                                onChange={(e) => setSampleInputs(prev => ({
+                                                  ...prev,
+                                                  [prob.code]: { ...(prev[prob.code] || { output: '' }), input: e.target.value }
+                                                }))}
+                                                style={{ width: '100%', fontSize: '0.78rem', fontFamily: 'var(--font-mono)' }}
+                                              />
+                                            </div>
+                                            <div>
+                                              <label style={{ fontSize: '0.7rem', color: 'var(--text-muted)', display: 'block', marginBottom: '2px' }}>Output mẫu:</label>
+                                              <textarea
+                                                className="input-field"
+                                                rows={2}
+                                                placeholder="Ví dụ: 12"
+                                                value={sampleInputs[prob.code]?.output || ''}
+                                                onChange={(e) => setSampleInputs(prev => ({
+                                                  ...prev,
+                                                  [prob.code]: { ...(prev[prob.code] || { input: '' }), output: e.target.value }
+                                                }))}
+                                                style={{ width: '100%', fontSize: '0.78rem', fontFamily: 'var(--font-mono)' }}
+                                              />
+                                            </div>
+                                          </div>
+                                          <button
+                                            type="button"
+                                            className="btn btn-secondary btn-sm"
+                                            onClick={() => handleAddSampleToProblem(prob.code)}
+                                            style={{ fontSize: '0.72rem', padding: '3px 10px', display: 'inline-flex', alignItems: 'center', gap: '4px' }}
+                                          >
+                                            <Plus size={12} /> Thêm Test Mẫu
+                                          </button>
+                                        </div>
+                                      </div>
+                                      {/* SECTION 2: OFFICIAL TEST CASES (BẢO MẬT) */}
                                       <div style={{ fontFamily: 'var(--font-mono)', fontSize: '0.78rem', lineHeight: '2' }}>
-                                        <div style={{ fontWeight: 700, color: 'var(--accent-cyan)', marginBottom: '4px' }}>
-                                          {prob.code}/
+                                        <div style={{ fontWeight: 700, color: 'var(--accent-cyan)', marginBottom: '4px', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                          <Lock size={13} style={{ color: 'var(--accent-amber)' }} /> {prob.code}/ (BỘ TEST CHẤM ĐIỂM CHÍNH THỨC - BẢO MẬT)
                                         </div>
                                         {(prob.testCases || []).map((tc, idx) => {
                                           const isLast = idx === (prob.testCases?.length || 0) - 1;
