@@ -9,11 +9,10 @@
 - **Git state:** `main` branch. The working tree currently has an uncommitted `package.json` change adding `allowScripts.argon2@0.45.1=true`; preserve and inspect it before deciding whether it belongs in the next commit.
 - **Plan:** `docs/superpowers/plans/2026-10-01-manager-student-security-release.md`
 - **Detailed state file:** this file.
-- **Current task:** Task 5 — Signed updater and Electron hardening.
+- **Current task:** Task 6 — XSS, payload, CORS, rate limits and mass assignment.
 - **Current status:** `NOT STARTED`
-- **Last committed HEAD:** `c8c3126 docs: update handoff — Task 4 complete, Task 5 next`
-- **Uncommitted file before this process update:** `package.json` only (`allowScripts` entry for Argon2).
-- **Current uncommitted documentation after this update:** modified `SECURITY_RELEASE_HANDOFF.md`; new `SECURITY_RELEASE_PROCESS.md` and `CONTINUE_SECURITY_RELEASE_PROMPT.md`. These files intentionally document the live state and should be included in the next documentation/process commit without accidentally staging unrelated runtime data.
+- **Last committed HEAD:** `c2b8994 feat: signed updater — Ed25519 manifest, verified-path install, IPC hardening`
+- **Uncommitted files:** none; working tree is clean.
 - **Live dashboard:** `SECURITY_RELEASE_PROCESS.md`
 - **Copy-paste continuation prompt:** `CONTINUE_SECURITY_RELEASE_PROMPT.md`
 
@@ -226,14 +225,34 @@ Start directly from the current task and target files. Do not re-scan or re-audi
 
 ### Task 5 — Signed updater and Electron hardening
 
-**Status:** `NOT STARTED`
+**Status:** `COMPLETE` — commit `c2b8994`
 
-- Ed25519 manifest and offline private key workflow.
-- SHA-256/size/app/version verification and downgrade rejection.
-- Main process owns verified path; renderer cannot provide arbitrary installer path.
-- Validate IPC sender/origin and all role/port/URL/file arguments.
-- Introduce local app origin/CSP/navigation restrictions and LAN-only update URL validation.
-- First key-pinning release requires manual installation.
+**Files changed:**
+- `server/updateSecurity.cjs` (new): strict manifest schema; canonical Ed25519 payload; `verifyUpdateManifest` / `verifyUpdateArtifact`; LAN-only URL validation; `VerifiedUpdateState` single-use path holder; 1 MiB chunk SHA-256 streaming hash.
+- `config/update-public-key.pem` (new): pinned Ed25519 public key. **Private key stored at `~/.config/chaucaojudge/update-signing-private.pem`, mode 0600, outside repository.**
+- `scripts/sign-update.cjs` (new): offline signer — reads private key path from `UPDATE_SIGNING_KEY` env var, produces signed `update-manifest.json`.
+- `electron/main.cjs`: `validateLanServerUrl` on every serverUrl IPC argument; `verifyUpdateManifest` before caching `checkedUpdate`; streaming download with hard cap and in-flight SHA-256; rename-into-place after verification; `verifiedUpdateState.consume()` re-verifies before spawn; `update:install` accepts NO renderer path; `shell:false`, `win32`-only guard; all update IPC handlers call `rejectUntrustedIpc`; `set-app-role` restricted to `host`/`student`; `start-host-server` restricted to port 4000; `will-navigate`/`setWindowOpenHandler` restrictions; `publish-file` validates signed manifest before copying.
+- `electron/preload.cjs`: `update:install` exposes no `filePath` argument.
+- `server/index.cjs`: update check/download endpoints serve only the currently published signed manifest and artifact.
+- `src/components/UpdateNotification.tsx`: renderer calls `update:install()` with no argument.
+- `tests/update-security.test.cjs` (new): 6 RED-first tests — manifest verify, tamper/downgrade, LAN URL policy, sender allowlist (exact bundled entry URL in packaged mode), semver comparison, single-use state.
+
+**Security invariants confirmed:**
+- Renderer cannot supply an arbitrary executable path.
+- Downgrade, oversized, truncated, and tampered artifacts are rejected.
+- IPC sender must be the exact bundled `dist/index.html` (packaged) or `localhost:5173` (dev); arbitrary local `file://` pages are rejected.
+- Update URLs restricted to LAN/loopback HTTP port 4000.
+- `installUpdate` uses `shell: false` and only runs on `win32`.
+
+**Verification at completion:**
+- `npm test`: 45/45 passed.
+- `npm run typecheck`: exit 0.
+- `npm run lint`: exit 0 (pre-existing warnings only).
+- `npm run build`: exit 0.
+
+**Known manual validation required (post-release):**
+- Windows package install/relaunch drill (signed-update acceptance test in Task 8 release gate).
+- First bootstrap deployment must be installed manually since existing clients have no key pinned.
 
 ### Task 6 — XSS, payload, CORS, rate limits and mass assignment
 

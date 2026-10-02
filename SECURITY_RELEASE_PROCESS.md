@@ -6,11 +6,11 @@
 
 - **Canonical folder:** `/home/tuananh/Documents/Manager_Student`
 - **Branch:** `main`
-- **HEAD:** `c8c3126 docs: update handoff — Task 4 complete, Task 5 next`
-- **Current task:** Task 5 — Signed updater and Electron hardening
-- **Status:** `IN PROGRESS`
-- **Next exact action:** inspect only the current updater/IPC functions in `electron/main.cjs`, `electron/preload.cjs`, the update endpoints in `server/index.cjs`, and `UpdateNotification`; then write RED tests for manifest signature/hash/size verification and arbitrary-path rejection.
-- **Dirty state to preserve:** `package.json` contains an uncommitted `allowScripts` entry enabling the pinned Argon2 install script. This process update also modifies/adds the three process/handoff documents. Do not discard or overwrite any of them without evidence.
+- **HEAD:** `c2b8994 feat: signed updater — Ed25519 manifest, verified-path install, IPC hardening`
+- **Current task:** Task 6 — XSS, payload, CORS, rate limits and mass assignment
+- **Status:** `NOT STARTED`
+- **Next exact action:** Begin Task 6 — mark IN PROGRESS in process file, inspect server route validation and HTML rendering, write RED tests for DOCX/HTML XSS, oversized body, privileged field mass-assignment before patching.
+- **Dirty state to preserve:** none; working tree is clean after Task 5 commit.
 - **Stale source:** `/home/tuananh/.codex/worktrees/security-release/Manager_Student` ends at Task 3. Never merge/copy it back over this folder.
 
 ## Phase Table
@@ -21,7 +21,7 @@
 | 2. Auth/RBAC/API client | COMPLETE | `42f08d9`; 15/15 tests passed | Misleading password-entry UI deferred to Task 8 |
 | 3. Contest secrecy/integrity | COMPLETE | `ecf027c`, handoff `a676a0f`; 27/27 tests passed | None |
 | 4. Docker-only judge | COMPLETE | `3aa8c69`, handoff `c8c3126`; 39/39 passed, live Docker cases skipped without daemon | Windows Docker/OOM manual checks deferred to release gate |
-| 5. Signed updater/Electron | IN PROGRESS | Target inspection + RED tests underway | Current task |
+| 5. Signed updater/Electron | COMPLETE | `c2b8994`; 45/45 tests passed; typecheck/lint/build exit 0 | Windows package install/relaunch manual check deferred to release gate |
 | 6. XSS/network/payload | NOT STARTED | — | After Task 5 |
 | 7. Persistence/repo hygiene | NOT STARTED | — | After Task 6; preserve local DB/CSV/HSG |
 | 8. Truthful UX/docs/final gate | NOT STARTED | — | Final automated/manual verification |
@@ -153,6 +153,26 @@ Copy this block for every task/subtask:
 - **Additional hardening:** artifact hashing now reads in 1 MiB chunks instead of loading an installer up to 500 MiB into RAM; auto-install explicitly rejects non-Windows platforms.
 - **Verification:** updater tests 6/6 passed; syntax checks for Electron main, signer and update-security helper exit 0.
 - **Next exact action:** rerun fresh full suite/typecheck/lint/build after review fixes, then update detailed handoff and commit Task 5.
+
+### 2026-10-02 09:48 +07 — Task 5 COMPLETE
+
+- **Status:** COMPLETE
+- **Commit:** `c2b8994 feat: signed updater — Ed25519 manifest, verified-path install, IPC hardening`
+- **Fresh verification after review fixes:**
+  - `npm test` → 45/45 passed, 0 failed.
+  - `npm run typecheck` → exit 0.
+  - `npm run lint` → exit 0 (pre-existing warnings only).
+  - `npm run build` → exit 0.
+- **Security boundaries confirmed:**
+  - `update:install` IPC accepts zero arguments from renderer; main process re-verifies manifest+hash before spawning.
+  - IPC sender validation requires exact `dist/index.html` URL in packaged mode (arbitrary local `file://` rejected).
+  - LAN URL validation restricts to `http://{loopback|private}:4000/` only.
+  - Downgrade, tampered manifest, oversized/truncated download all rejected by `verifyUpdateArtifact`.
+  - `installUpdate` uses `shell: false` and only runs on `win32`.
+  - Role restricted to `host`/`student`; port restricted to `4000`.
+- **Known gaps (deferred):** Windows package install/relaunch must be validated on a real Windows machine; signed-update drill documented in Task 8 release gate.
+- **Dirty state:** clean working tree.
+- **Next exact action:** begin Task 6 — XSS, payload, CORS, rate limits and mass assignment.
 
 ### 2026-10-02 09:00 +07 — Canonical-folder reconciliation
 
