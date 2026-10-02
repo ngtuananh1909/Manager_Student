@@ -21,7 +21,7 @@
 | 2. Auth/RBAC/API client | COMPLETE | `42f08d9`; 15/15 tests passed | Misleading password-entry UI deferred to Task 8 |
 | 3. Contest secrecy/integrity | COMPLETE | `ecf027c`, handoff `a676a0f`; 27/27 tests passed | None |
 | 4. Docker-only judge | COMPLETE | `3aa8c69`, handoff `c8c3126`; 39/39 passed, live Docker cases skipped without daemon | Windows Docker/OOM manual checks deferred to release gate |
-| 5. Signed updater/Electron | COMPLETE | `c2b8994`; 45/45 tests passed; typecheck/lint/build exit 0 | Windows package install/relaunch manual check deferred to release gate |
+| 5. Signed updater/Electron | COMPLETE | `c2b8994`, audit fix `a89aaf0`; 45/45 tests; typecheck/lint/build exit 0 | Windows package install/relaunch manual check deferred to release gate |
 | 6. XSS/network/payload | NOT STARTED | — | After Task 5 |
 | 7. Persistence/repo hygiene | NOT STARTED | — | After Task 6; preserve local DB/CSV/HSG |
 | 8. Truthful UX/docs/final gate | NOT STARTED | — | Final automated/manual verification |
