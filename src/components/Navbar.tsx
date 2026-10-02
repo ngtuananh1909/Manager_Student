@@ -36,7 +36,7 @@ export const Navbar: React.FC<Props> = ({ activeTab, setActiveTab }) => {
         <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
           <div 
             style={{ display: 'flex', alignItems: 'center', gap: '10px', cursor: 'pointer' }}
-            onClick={() => setActiveTab(role === 'host' ? 'problems-manage' : 'problems')}
+            onClick={() => setActiveTab(role === 'host' ? 'contests-manage' : 'contests')}
           >
             <div style={{ 
               width: '36px', 
@@ -46,14 +46,15 @@ export const Navbar: React.FC<Props> = ({ activeTab, setActiveTab }) => {
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center',
-              boxShadow: '0 4px 12px var(--primary-glow)'
+              boxShadow: '0 4px 12px var(--primary-glow)',
+              transition: 'transform var(--dur-normal) var(--ease-spring), box-shadow var(--dur-normal) ease'
             }}>
               <Code2 size={22} color="#fff" />
             </div>
             <div>
               <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                 <span style={{ fontWeight: 800, fontSize: '1.05rem', letterSpacing: '-0.02em', background: 'linear-gradient(90deg, #fff 0%, #cbd5e1 100%)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent' }}>
-                  SchoolJudge
+                  ChauCaoJudge
                 </span>
                 <span style={{ 
                   fontSize: '0.68rem', 
@@ -80,15 +81,16 @@ export const Navbar: React.FC<Props> = ({ activeTab, setActiveTab }) => {
               background: 'var(--bg-surface)', 
               borderColor: isConnected ? 'rgba(16, 185, 129, 0.25)' : 'rgba(244, 63, 94, 0.25)',
               fontSize: '0.78rem',
-              padding: '4px 10px'
+              padding: '4px 10px',
+              transition: 'all var(--dur-normal) var(--ease-spring)'
             }}
             onClick={() => setShowNetworkModal(true)}
             title="Bấm để chuyển đổi Mạng LAN hoặc Internet DDNS"
           >
             {networkMode === 'lan' ? (
-              <Wifi size={13} style={{ color: 'var(--accent-emerald)' }} />
+              <Wifi size={13} style={{ color: 'var(--accent-emerald)' }} className={isConnected ? "animate-pulse-subtle" : ""} />
             ) : (
-              <Globe size={13} style={{ color: 'var(--accent-cyan)' }} />
+              <Globe size={13} style={{ color: 'var(--accent-cyan)' }} className={isConnected ? "animate-pulse-subtle" : ""} />
             )}
             <span style={{ color: 'var(--text-secondary)' }}>
               {networkMode === 'lan' ? 'LAN:' : 'Internet:'}
@@ -99,30 +101,30 @@ export const Navbar: React.FC<Props> = ({ activeTab, setActiveTab }) => {
           </button>
         </div>
 
-        {/* Center: Navigation Tabs for Authenticated Role */}
-        <nav style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+        {/* Center: Modern Segmented Tab Bar */}
+        <nav className="nav-segmented-tabs">
           {role === 'user' ? (
             <>
               <button 
-                className={`btn btn-sm ${activeTab === 'contests' ? 'btn-primary' : 'btn-outline'}`}
+                className={`nav-tab-btn ${activeTab === 'contests' ? 'active' : ''}`}
                 onClick={() => setActiveTab('contests')}
               >
                 <Trophy size={14} /> Kỳ Thi & Kiểm Tra
               </button>
               <button 
-                className={`btn btn-sm ${activeTab === 'leaderboard' ? 'btn-primary' : 'btn-outline'}`}
+                className={`nav-tab-btn ${activeTab === 'leaderboard' ? 'active' : ''}`}
                 onClick={() => setActiveTab('leaderboard')}
               >
-                Bảng Xếp Hạng
+                <BarChart3 size={14} /> Bảng Xếp Hạng
               </button>
               <button 
-                className={`btn btn-sm ${activeTab === 'submissions' ? 'btn-primary' : 'btn-outline'}`}
+                className={`nav-tab-btn ${activeTab === 'submissions' ? 'active' : ''}`}
                 onClick={() => setActiveTab('submissions')}
               >
-                Lịch Sử Nộp
+                <Layers size={14} /> Lịch Sử Nộp
               </button>
               <button 
-                className={`btn btn-sm ${activeTab === 'badges' ? 'btn-primary' : 'btn-outline'}`}
+                className={`nav-tab-btn ${activeTab === 'badges' ? 'active' : ''}`}
                 onClick={() => setActiveTab('badges')}
               >
                 <Sparkles size={14} /> Huy Hiệu
@@ -131,58 +133,58 @@ export const Navbar: React.FC<Props> = ({ activeTab, setActiveTab }) => {
           ) : (
             <>
               <button 
-                className={`btn btn-sm ${activeTab === 'contests-manage' ? 'btn-primary' : 'btn-outline'}`}
+                className={`nav-tab-btn ${activeTab === 'contests-manage' ? 'active' : ''}`}
                 onClick={() => setActiveTab('contests-manage')}
               >
                 <Trophy size={14} /> Kỳ Thi Nội Bộ
               </button>
               <button 
-                className={`btn btn-sm ${activeTab === 'students' ? 'btn-primary' : 'btn-outline'}`}
+                className={`nav-tab-btn ${activeTab === 'students' ? 'active' : ''}`}
                 onClick={() => setActiveTab('students')}
               >
-                <Users size={14} /> Quản Lý Học Sinh
+                <Users size={14} /> Học Sinh
               </button>
               <button 
-                className={`btn btn-sm ${activeTab === 'problems-manage' ? 'btn-primary' : 'btn-outline'}`}
+                className={`nav-tab-btn ${activeTab === 'problems-manage' ? 'active' : ''}`}
                 onClick={() => setActiveTab('problems-manage')}
               >
-                <Layers size={14} /> Ngân Hàng Đề & Test
+                <Layers size={14} /> Đề & Test
               </button>
               <button 
-                className={`btn btn-sm ${activeTab === 'live-monitor' ? 'btn-primary' : 'btn-outline'}`}
+                className={`nav-tab-btn ${activeTab === 'live-monitor' ? 'active' : ''}`}
                 onClick={() => setActiveTab('live-monitor')}
               >
-                <Activity size={14} /> Giám Sát Realtime
+                <Activity size={14} /> Giám Sát
               </button>
               <button 
-                className={`btn btn-sm ${activeTab === 'leaderboard' ? 'btn-primary' : 'btn-outline'}`}
+                className={`nav-tab-btn ${activeTab === 'leaderboard' ? 'active' : ''}`}
                 onClick={() => setActiveTab('leaderboard')}
               >
                 <Trophy size={14} /> Bảng Điểm
               </button>
               <button 
-                className={`btn btn-sm ${activeTab === 'anti-cheat' ? 'btn-primary' : 'btn-outline'}`}
+                className={`nav-tab-btn ${activeTab === 'anti-cheat' ? 'active' : ''}`}
                 onClick={() => setActiveTab('anti-cheat')}
               >
-                <ShieldAlert size={14} /> Chống Gian Lận
+                <ShieldAlert size={14} /> Gian Lận
               </button>
               <button 
-                className={`btn btn-sm ${activeTab === 'classes' ? 'btn-primary' : 'btn-outline'}`}
+                className={`nav-tab-btn ${activeTab === 'classes' ? 'active' : ''}`}
                 onClick={() => setActiveTab('classes')}
               >
                 <School size={14} /> Lớp Học
               </button>
               <button 
-                className={`btn btn-sm ${activeTab === 'statistics' ? 'btn-primary' : 'btn-outline'}`}
+                className={`nav-tab-btn ${activeTab === 'statistics' ? 'active' : ''}`}
                 onClick={() => setActiveTab('statistics')}
               >
                 <BarChart3 size={14} /> Thống Kê
               </button>
               <button 
-                className={`btn btn-sm ${activeTab === 'settings' ? 'btn-primary' : 'btn-outline'}`}
+                className={`nav-tab-btn ${activeTab === 'settings' ? 'active' : ''}`}
                 onClick={() => setActiveTab('settings')}
               >
-                <Settings size={14} /> Máy Chấm (Sandbox)
+                <Settings size={14} /> Máy Chấm
               </button>
             </>
           )}

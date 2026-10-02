@@ -1,7 +1,19 @@
 import React, { useState } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { useNetwork } from '../context/NetworkContext';
-import { Code2, User, Key, Globe, Wifi, Shield, ArrowRight, AlertCircle, RefreshCw } from 'lucide-react';
+import { 
+  Code2, 
+  User, 
+  Key, 
+  Globe, 
+  Wifi, 
+  ArrowRight, 
+  AlertCircle, 
+  RefreshCw,
+  SlidersHorizontal,
+  Terminal,
+  ShieldCheck
+} from 'lucide-react';
 import { LANDiscoveryModal } from '../components/LANDiscoveryModal';
 
 export const LoginView: React.FC = () => {
@@ -35,55 +47,104 @@ export const LoginView: React.FC = () => {
   };
 
   return (
-    <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '24px', overflowY: 'auto' }}>
-      <div className="glass-panel" style={{ width: '100%', maxWidth: '440px', padding: '36px 36px' }}>
-        <div style={{ textAlign: 'center', marginBottom: '24px' }}>
+    <div style={{ 
+      flex: 1, 
+      display: 'flex', 
+      flexDirection: 'column', 
+      alignItems: 'center', 
+      justifyContent: 'center', 
+      padding: '24px', 
+      overflowY: 'auto',
+      position: 'relative'
+    }}>
+      {/* Ambient Radial Spotlight */}
+      <div style={{
+        position: 'absolute',
+        width: '500px',
+        height: '500px',
+        borderRadius: '50%',
+        background: 'radial-gradient(circle, rgba(99, 102, 241, 0.16) 0%, rgba(6, 182, 212, 0.05) 50%, transparent 70%)',
+        filter: 'blur(50px)',
+        pointerEvents: 'none',
+        zIndex: 0
+      }} />
+
+      {/* Login Card */}
+      <div 
+        className="glass-panel animate-scale-in" 
+        style={{ 
+          width: '100%', 
+          maxWidth: '430px', 
+          padding: '38px 34px',
+          position: 'relative',
+          zIndex: 1
+        }}
+      >
+        {/* Brand Header */}
+        <div style={{ textAlign: 'center', marginBottom: '26px' }}>
           <div style={{ 
-            width: '52px', 
-            height: '52px', 
-            borderRadius: '14px', 
+            width: '56px', 
+            height: '56px', 
+            borderRadius: '16px', 
             background: 'linear-gradient(135deg, var(--primary) 0%, var(--accent-cyan) 100%)',
             display: 'inline-flex',
             alignItems: 'center',
             justifyContent: 'center',
-            marginBottom: '12px',
-            boxShadow: '0 6px 20px var(--primary-glow)'
+            marginBottom: '14px',
+            boxShadow: '0 8px 24px var(--primary-glow)',
+            border: '1px solid rgba(255, 255, 255, 0.2)'
           }}>
             <Code2 size={30} color="#fff" />
           </div>
-          <h2 style={{ fontSize: '1.45rem', marginBottom: '6px' }}>
-            {mode === 'login' ? 'Đăng nhập SchoolJudge' : 'Đăng ký học sinh'}
-          </h2>
-          <p style={{ color: 'var(--text-secondary)', fontSize: '0.86rem' }}>
-            Ứng dụng tự động nhận diện vai trò (Giáo viên / Học sinh) theo tài khoản của bạn
+
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px', marginBottom: '6px' }}>
+            <h2 style={{ fontSize: '1.45rem', fontWeight: 800, letterSpacing: '-0.02em', color: 'var(--text-main)' }}>
+              {mode === 'login' ? 'Đăng nhập SchoolJudge' : 'Đăng ký học sinh'}
+            </h2>
+            <span style={{ 
+              fontSize: '0.68rem', 
+              padding: '2px 7px', 
+              borderRadius: '5px', 
+              fontWeight: 700,
+              background: 'rgba(6, 182, 212, 0.15)',
+              color: 'var(--accent-cyan)',
+              border: '1px solid rgba(6, 182, 212, 0.3)',
+              fontFamily: 'var(--font-mono)'
+            }}>
+              C++11
+            </span>
+          </div>
+
+          <p style={{ color: 'var(--text-secondary)', fontSize: '0.84rem', lineHeight: 1.45 }}>
+            {mode === 'login' ? 'Ứng dụng tự động nhận diện vai trò (Giáo viên / Học sinh) theo tài khoản của bạn' : 'Hệ thống thi đấu và chấm bài lập trình nội bộ trường học'}
           </p>
         </div>
 
         {/* Network Mode Status Pill */}
         <div 
           onClick={() => setShowNetworkModal(true)}
+          className="glass-card"
           style={{ 
-            background: 'var(--bg-surface-elevated)', 
-            border: '1px solid var(--border-subtle)', 
-            borderRadius: 'var(--radius-md)',
-            padding: '8px 12px',
+            padding: '9px 12px',
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'space-between',
             marginBottom: '20px',
             cursor: 'pointer',
-            fontSize: '0.8rem'
+            fontSize: '0.8rem',
+            background: 'rgba(0, 0, 0, 0.25)',
+            borderColor: isConnected ? 'rgba(16, 185, 129, 0.25)' : 'rgba(244, 63, 94, 0.25)'
           }}
-          title="Nhấp để cấu hình chế độ kết nối mạng LAN hoặc Internet DDNS"
+          title="Bấm để cấu hình chế độ kết nối mạng LAN hoặc Internet"
         >
           <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
             {networkMode === 'lan' ? (
-              <Wifi size={14} style={{ color: 'var(--accent-emerald)' }} />
+              <Wifi size={14} style={{ color: 'var(--accent-emerald)' }} className={isConnected ? "animate-pulse-subtle" : ""} />
             ) : (
-              <Globe size={14} style={{ color: 'var(--accent-cyan)' }} />
+              <Globe size={14} style={{ color: 'var(--accent-cyan)' }} className={isConnected ? "animate-pulse-subtle" : ""} />
             )}
-            <span style={{ fontWeight: 600 }}>
-              Chế độ: {networkMode === 'lan' ? 'Mạng LAN (Tại trường)' : 'Internet (Tại nhà)'}
+            <span style={{ fontWeight: 600, color: 'var(--text-secondary)' }}>
+              {networkMode === 'lan' ? 'Mạng LAN phòng máy' : 'Internet từ xa'}
             </span>
           </div>
 
@@ -92,7 +153,8 @@ export const LoginView: React.FC = () => {
               width: '7px', 
               height: '7px', 
               borderRadius: '50%', 
-              background: isConnected ? 'var(--accent-emerald)' : 'var(--accent-rose)' 
+              background: isConnected ? 'var(--accent-emerald)' : 'var(--accent-rose)',
+              boxShadow: isConnected ? '0 0 8px rgba(16, 185, 129, 0.6)' : 'none'
             }} />
             <span style={{ color: isConnected ? 'var(--accent-emerald)' : 'var(--accent-rose)', fontWeight: 600, fontFamily: 'var(--font-mono)' }}>
               {isConnected ? (latency !== null ? `${latency}ms` : 'Online') : 'Offline'}
@@ -100,23 +162,28 @@ export const LoginView: React.FC = () => {
           </div>
         </div>
 
+        {/* Error Alert */}
         {errorMsg && (
-          <div style={{ 
-            background: 'rgba(244, 63, 94, 0.1)', 
-            border: '1px solid rgba(244, 63, 94, 0.3)', 
-            padding: '10px 14px', 
-            borderRadius: 'var(--radius-md)',
-            color: 'var(--accent-rose)',
-            fontSize: '0.82rem',
-            marginBottom: '18px',
-            display: 'flex',
-            alignItems: 'center',
-            gap: '8px'
-          }}>
+          <div 
+            className="animate-slide-down"
+            style={{ 
+              background: 'rgba(244, 63, 94, 0.1)', 
+              border: '1px solid rgba(244, 63, 94, 0.3)', 
+              padding: '10px 14px', 
+              borderRadius: 'var(--radius-md)',
+              color: 'var(--accent-rose)',
+              fontSize: '0.82rem',
+              marginBottom: '18px',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '8px'
+            }}
+          >
             <AlertCircle size={16} /> {errorMsg}
           </div>
         )}
 
+        {/* Login Form */}
         <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
           {mode === 'register' && (
             <div>
@@ -134,33 +201,41 @@ export const LoginView: React.FC = () => {
             </div>
           )}
           <div>
-            <label style={{ fontSize: '0.8rem', fontWeight: 600, color: 'var(--text-secondary)', display: 'block', marginBottom: '6px' }}>
-              TÊN ĐĂNG NHẬP / MÃ HỌC SINH
+            <label style={{ fontSize: '0.78rem', fontWeight: 600, letterSpacing: '0.04em', color: 'var(--text-muted)', display: 'block', marginBottom: '6px', textTransform: 'uppercase' }}>
+              Tên Đăng Nhập / Mã Thí Sinh
             </label>
-            <input
-              type="text"
-              className="input-field"
-              placeholder="VD: admin hoặc nguyenvana"
-              value={username}
-              onChange={(e) => setUsername(e.target.value)}
-              required
-            />
+            <div style={{ position: 'relative' }}>
+              <User size={16} style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)', pointerEvents: 'none' }} />
+              <input
+                type="text"
+                className="input-field"
+                placeholder="VD: admin hoặc nguyenvana"
+                value={username}
+                onChange={(e) => setUsername(e.target.value)}
+                style={{ paddingLeft: '38px' }}
+                required
+              />
+            </div>
           </div>
 
           <div>
-            <label style={{ fontSize: '0.8rem', fontWeight: 600, color: 'var(--text-secondary)', display: 'block', marginBottom: '6px' }}>
-              MẬT KHẨU
+            <label style={{ fontSize: '0.78rem', fontWeight: 600, letterSpacing: '0.04em', color: 'var(--text-muted)', display: 'block', marginBottom: '6px', textTransform: 'uppercase' }}>
+              Mật Khẩu
             </label>
-            <input
-              type="password"
-              className="input-field"
-              placeholder="Nhập mật khẩu"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              minLength={10}
-              maxLength={128}
-              required
-            />
+            <div style={{ position: 'relative' }}>
+              <Key size={16} style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)', pointerEvents: 'none' }} />
+              <input
+                type="password"
+                className="input-field"
+                placeholder="Nhập mật khẩu của bạn"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                style={{ paddingLeft: '38px' }}
+                minLength={10}
+                maxLength={128}
+                required
+              />
+            </div>
           </div>
 
           {mode === 'register' && (
@@ -182,12 +257,12 @@ export const LoginView: React.FC = () => {
           <button 
             type="submit" 
             className="btn btn-primary"
-            style={{ width: '100%', marginTop: '6px', padding: '11px' }}
+            style={{ width: '100%', marginTop: '6px', padding: '12px', fontSize: '0.92rem' }}
             disabled={isSubmitting}
           >
             {isSubmitting ? (
               <>
-                <RefreshCw size={15} className="animate-spin" /> Đang kiểm tra...
+                <RefreshCw size={15} className="animate-spin" /> Đang xác thực...
               </>
             ) : (
               <>
@@ -197,7 +272,7 @@ export const LoginView: React.FC = () => {
           </button>
         </form>
 
-        <div style={{ marginTop: '20px', textAlign: 'center' }}>
+        <div style={{ marginTop: '22px', textAlign: 'center' }}>
           <button
             type="button"
             className="btn btn-secondary btn-sm"
@@ -211,10 +286,11 @@ export const LoginView: React.FC = () => {
           </button>
           <button 
             className="btn btn-outline btn-sm"
-            style={{ fontSize: '0.78rem', width: '100%' }}
+            style={{ fontSize: '0.78rem', width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '7px' }}
             onClick={() => setShowNetworkModal(true)}
           >
-            ⚙️ Cấu Hình Địa Chỉ Kết Nối Mạng (LAN / Internet)
+            <SlidersHorizontal size={13} />
+            Cấu Hình Kết Nối Mạng (LAN / Internet)
           </button>
         </div>
       </div>
@@ -223,3 +299,4 @@ export const LoginView: React.FC = () => {
     </div>
   );
 };
+export default LoginView;

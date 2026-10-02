@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { apiFetch, downloadAuthenticatedFile } from '../../lib/api';
-import { Contest, Problem, ClassGroup, LeaderboardEntry, TestCase } from '../../types';
+import { Contest, Problem, ClassGroup, LeaderboardEntry, TestCase, User } from '../../types';
 import { useNetwork } from '../../context/NetworkContext';
 import { StatementViewer } from '../../components/StatementViewer';
 import { 
@@ -47,6 +47,8 @@ export const ContestManager: React.FC = () => {
   const [contests, setContests] = useState<Contest[]>([]);
   const [problems, setProblems] = useState<Problem[]>([]);
   const [classes, setClasses] = useState<ClassGroup[]>([]);
+  const [users, setUsers] = useState<User[]>([]);
+  const [studentScopeSearch, setStudentScopeSearch] = useState('');
   const [loading, setLoading] = useState(true);
 
   // Filter
@@ -60,6 +62,10 @@ export const ContestManager: React.FC = () => {
     title: '',
     description: '',
     mode: 'offline', // Default to Offline LAN
+    scopeType: 'ALL',
+    targetGrades: [],
+    targetClasses: [],
+    targetStudents: [],
     classIds: [],
     problemIds: [],
     durationMinutes: 45,
@@ -222,15 +228,17 @@ export const ContestManager: React.FC = () => {
 
   const fetchInitialData = async () => {
     try {
-      const [resContests, resProblems, resClasses] = await Promise.all([
+      const [resContests, resProblems, resClasses, resUsers] = await Promise.all([
         apiFetch(`${serverUrl}/api/contests`),
         apiFetch(`${serverUrl}/api/problems`),
-        apiFetch(`${serverUrl}/api/classes`)
+        apiFetch(`${serverUrl}/api/classes`),
+        apiFetch(`${serverUrl}/api/users`)
       ]);
 
       if (resContests.ok) setContests(await resContests.json());
       if (resProblems.ok) setProblems(await resProblems.json());
       if (resClasses.ok) setClasses(await resClasses.json());
+      if (resUsers.ok) setUsers(await resUsers.json());
     } catch (e) {
       console.error(e);
     } finally {
@@ -366,6 +374,10 @@ export const ContestManager: React.FC = () => {
       description: '',
       totalScore: 100,
       mode: 'offline',
+      scopeType: 'ALL',
+      targetGrades: [],
+      targetClasses: [],
+      targetStudents: [],
       classIds: [],
       problemIds: [],
       durationMinutes: 45,
@@ -407,9 +419,20 @@ export const ContestManager: React.FC = () => {
     };
 
     const contestTotal = c.totalScore || 100;
+    const derivedScope = c.scopeType || (
+      (c.candidateIds && c.candidateIds.length > 0) ? 'STUDENT' :
+      (c.targetGrades && c.targetGrades.length > 0) ? 'GRADE' :
+      (c.classIds && c.classIds.length > 0) ? 'CLASS' : 'ALL'
+    );
     setEditingContestId(c.id);
     setFormContest({
       ...c,
+      scopeType: derivedScope,
+      targetGrades: c.targetGrades || [],
+      targetClasses: c.targetClasses || c.classIds || [],
+      targetStudents: c.targetStudents || c.candidateIds || [],
+      classIds: c.targetClasses || c.classIds || [],
+      candidateIds: c.targetStudents || c.candidateIds || [],
       totalScore: contestTotal,
       startTime: formatDT(c.startTime),
       endTime: formatDT(c.endTime),
@@ -1336,88 +1359,63 @@ export const ContestManager: React.FC = () => {
         </div>
       </div>
 
-      {/* Stats Cards */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '16px', marginBottom: '24px' }}>
-        <div className="glass-card" style={{ padding: '16px 20px', borderLeft: '4px solid var(--primary)' }}>
-          <div style={{ fontSize: '0.78rem', color: 'var(--text-muted)', fontWeight: 600 }}>TỔNG KỲ THI</div>
-          <div style={{ fontSize: '1.6rem', fontWeight: 800, color: 'var(--text-main)', marginTop: '4px' }}>{contests.length}</div>
-        </div>
-
-        <div className="glass-card" style={{ padding: '16px 20px', borderLeft: '4px solid var(--accent-emerald)' }}>
-          <div style={{ fontSize: '0.78rem', color: 'var(--text-muted)', fontWeight: 600 }}>ĐANG DIỄN RA</div>
-          <div style={{ fontSize: '1.6rem', fontWeight: 800, color: 'var(--accent-emerald)', marginTop: '4px' }}>{runningCount}</div>
-        </div>
-
-        <div className="glass-card" style={{ padding: '16px 20px', borderLeft: '4px solid #10b981' }}>
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-            <span style={{ fontSize: '0.78rem', color: 'var(--text-muted)', fontWeight: 600 }}>CHẾ ĐỘ OFFLINE (LAN)</span>
-            <Wifi size={16} style={{ color: '#10b981' }} />
-          </div>
-          <div style={{ fontSize: '1.6rem', fontWeight: 800, color: '#34d399', marginTop: '4px' }}>{offlineCount}</div>
-        </div>
-
-        <div className="glass-card" style={{ padding: '16px 20px', borderLeft: '4px solid #38bdf8' }}>
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-            <span style={{ fontSize: '0.78rem', color: 'var(--text-muted)', fontWeight: 600 }}>CHẾ ĐỘ ONLINE (INTERNET)</span>
-            <Globe size={16} style={{ color: '#38bdf8' }} />
-          </div>
-          <div style={{ fontSize: '1.6rem', fontWeight: 800, color: '#38bdf8', marginTop: '4px' }}>{onlineCount}</div>
-        </div>
-      </div>
-
-      {/* Filter and Search Bar */}
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '20px', flexWrap: 'wrap', gap: '12px' }}>
-        <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+      {/* ── LINEAR SEGMENTED TABS & FILTERS ── */}
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '16px', flexWrap: 'wrap', gap: '10px' }}>
+        <div className="linear-tabs">
           <button 
-            className={`btn btn-sm ${filterMode === 'all' ? 'btn-primary' : 'btn-outline'}`}
+            type="button"
+            className={`linear-tab-btn ${filterMode === 'all' ? 'active' : ''}`}
             onClick={() => setFilterMode('all')}
           >
             Tất cả ({contests.length})
           </button>
           <button 
-            className={`btn btn-sm ${filterMode === 'running' ? 'btn-primary' : 'btn-outline'}`}
+            type="button"
+            className={`linear-tab-btn ${filterMode === 'running' ? 'active' : ''}`}
             onClick={() => setFilterMode('running')}
           >
-            Đang thi ({runningCount})
+            <span className="live-indicator-dot" /> Đang thi ({runningCount})
           </button>
           <button 
-            className={`btn btn-sm ${filterMode === 'upcoming' ? 'btn-primary' : 'btn-outline'}`}
+            type="button"
+            className={`linear-tab-btn ${filterMode === 'upcoming' ? 'active' : ''}`}
             onClick={() => setFilterMode('upcoming')}
           >
             Sắp tới
           </button>
           <button 
-            className={`btn btn-sm ${filterMode === 'ended' ? 'btn-primary' : 'btn-outline'}`}
+            type="button"
+            className={`linear-tab-btn ${filterMode === 'ended' ? 'active' : ''}`}
             onClick={() => setFilterMode('ended')}
           >
             Đã kết thúc
           </button>
           <button 
-            className={`btn btn-sm ${filterMode === 'offline' ? 'btn-primary' : 'btn-outline'}`}
+            type="button"
+            className={`linear-tab-btn ${filterMode === 'offline' ? 'active' : ''}`}
             onClick={() => setFilterMode('offline')}
-            style={{ display: 'inline-flex', alignItems: 'center', gap: '5px' }}
           >
-            <Wifi size={13} /> Offline (LAN)
+            <Wifi size={11} /> LAN ({offlineCount})
           </button>
           <button 
-            className={`btn btn-sm ${filterMode === 'online' ? 'btn-primary' : 'btn-outline'}`}
+            type="button"
+            className={`linear-tab-btn ${filterMode === 'online' ? 'active' : ''}`}
             onClick={() => setFilterMode('online')}
-            style={{ display: 'inline-flex', alignItems: 'center', gap: '5px' }}
           >
-            <Globe size={13} /> Online (Internet)
+            <Globe size={11} /> Web ({onlineCount})
           </button>
         </div>
 
         {/* Search */}
-        <div style={{ position: 'relative', width: '280px' }}>
-          <Search size={15} style={{ position: 'absolute', left: '10px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)' }} />
+        <div style={{ position: 'relative', width: '240px' }}>
+          <Search size={14} style={{ position: 'absolute', left: '10px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)' }} />
           <input
             type="text"
             className="input-field"
-            placeholder="Tìm kiếm kỳ thi..."
+            placeholder="Tìm kỳ thi..."
             value={searchQuery}
             onChange={e => setSearchQuery(e.target.value)}
-            style={{ paddingLeft: '32px', fontSize: '0.84rem' }}
+            style={{ paddingLeft: '30px', fontSize: '0.8rem', height: '32px' }}
           />
         </div>
       </div>
@@ -1437,229 +1435,214 @@ export const ContestManager: React.FC = () => {
           </button>
         </div>
       ) : (
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(380px, 1fr))', gap: '20px' }}>
-          {filteredContests.map(c => {
-            const isRunning = c.status === 'running';
-            const isUpcoming = c.status === 'upcoming';
-            const isEnded = c.status === 'ended';
-            const contestProblems = problems.filter(p => (c.problemIds || []).includes(p.id) || (c.problemIds || []).includes(p.code));
+        <div className="arena-problem-table-container">
+          <table className="desktop-data-table">
+            <thead>
+              <tr>
+                <th style={{ width: '130px' }}>Trạng Thái</th>
+                <th>Tên Kỳ Thi</th>
+                <th style={{ width: '120px' }}>Chế Độ</th>
+                <th style={{ width: '160px' }}>Thời Gian</th>
+                <th style={{ width: '150px' }}>Đối Tượng</th>
+                <th style={{ width: '150px' }}>Đề Bài</th>
+                <th style={{ width: '280px', textAlign: 'right' }}>Thao Tác</th>
+              </tr>
+            </thead>
+            <tbody>
+              {filteredContests.map(c => {
+                const isRunning = c.status === 'running';
+                const isUpcoming = c.status === 'upcoming';
+                const isEnded = c.status === 'ended';
 
-            return (
-              <div 
-                key={c.id} 
-                className="glass-card" 
-                style={{ 
-                  display: 'flex', 
-                  flexDirection: 'column', 
-                  justifyContent: 'space-between',
-                  borderTop: isRunning ? '3px solid var(--accent-emerald)' : isUpcoming ? '3px solid var(--accent-cyan)' : '3px solid var(--border-subtle)'
-                }}
-              >
-                <div>
-                  {/* Card Header */}
-                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '12px' }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                return (
+                  <tr key={c.id} className="data-table-row">
+                    <td>
+                      {isRunning && (
+                        <span className="badge badge-ac" style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
+                          <span className="live-indicator-dot" /> Đang Thi
+                        </span>
+                      )}
+                      {isUpcoming && <span className="badge badge-tle">Sắp Tới</span>}
+                      {isEnded && (
+                        <span className="badge" style={{ background: 'rgba(99, 102, 241, 0.15)', color: '#a5b4fc', border: '1px solid rgba(129, 140, 248, 0.3)' }}>
+                          Đã Kết Thúc
+                        </span>
+                      )}
+                    </td>
+                    <td>
+                      <div>
+                        <div style={{ fontWeight: 700, color: 'var(--text-main)', fontSize: '0.88rem', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                          <span>{c.title}</span>
+                          {c.pdfUrl && (
+                            <button
+                              type="button"
+                              className="pdf-tag"
+                              style={{ cursor: 'pointer', border: 'none' }}
+                              onClick={() => setPdfViewerModal({ title: c.title, url: `${serverUrl}${c.pdfUrl}`, fileName: c.pdfFileName })}
+                              title="Xem đề thi PDF"
+                            >
+                              <FileText size={10} /> PDF
+                            </button>
+                          )}
+                        </div>
+                        {c.description && (
+                          <div style={{ fontSize: '0.74rem', color: 'var(--text-muted)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: '300px' }}>
+                            {c.description}
+                          </div>
+                        )}
+                      </div>
+                    </td>
+                    <td>
                       {c.mode === 'offline' ? (
-                        <span style={{ fontSize: '0.72rem', padding: '2px 8px', borderRadius: '12px', background: 'rgba(16,185,129,0.15)', color: '#34d399', fontWeight: 700, display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
-                          <Wifi size={12} /> OFFLINE (LAN)
+                        <span style={{ fontSize: '0.75rem', color: 'var(--accent-emerald)', display: 'inline-flex', alignItems: 'center', gap: '4px', fontWeight: 600 }}>
+                          <Wifi size={11} /> LAN Offline
                         </span>
                       ) : (
-                        <span style={{ fontSize: '0.72rem', padding: '2px 8px', borderRadius: '12px', background: 'rgba(56,189,248,0.15)', color: '#38bdf8', fontWeight: 700, display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
-                          <Globe size={12} /> ONLINE
+                        <span style={{ fontSize: '0.75rem', color: 'var(--accent-cyan)', display: 'inline-flex', alignItems: 'center', gap: '4px', fontWeight: 600 }}>
+                          <Globe size={11} /> Online
                         </span>
                       )}
+                    </td>
+                    <td>
+                      <div style={{ fontSize: '0.78rem', fontFamily: 'var(--font-mono)', color: 'var(--text-main)' }}>
+                        {c.durationMinutes} phút
+                      </div>
+                      <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginTop: '2px' }}>
+                        {new Date(c.startTime).toLocaleString('vi-VN', { dateStyle: 'short', timeStyle: 'short' })}
+                      </div>
+                    </td>
+                    <td>
+                      <div style={{ fontSize: '0.76rem', color: 'var(--text-secondary)', maxWidth: '160px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                        {(() => {
+                          const scope = (c.scopeType || '').toUpperCase();
+                          if (scope === 'ALL' || (!scope && (!c.classIds || c.classIds.length === 0) && (!c.candidateIds || c.candidateIds.length === 0))) {
+                            return <span className="badge badge-neutral" style={{ fontSize: '0.72rem' }}>Toàn trường</span>;
+                          }
+                          if (scope === 'GRADE' || (c.targetGrades && c.targetGrades.length > 0)) {
+                            const grades = c.targetGrades && c.targetGrades.length > 0 ? c.targetGrades.join(', ') : 'Tất cả';
+                            return <span className="badge" style={{ background: 'rgba(168, 85, 247, 0.15)', color: '#c084fc', border: '1px solid rgba(168, 85, 247, 0.3)', fontSize: '0.72rem' }}>Khối {grades}</span>;
+                          }
+                          if (scope === 'STUDENT' || (c.candidateIds && c.candidateIds.length > 0)) {
+                            const count = (c.targetStudents || c.candidateIds || []).length;
+                            return <span className="badge" style={{ background: 'rgba(236, 72, 153, 0.15)', color: '#f472b6', border: '1px solid rgba(236, 72, 153, 0.3)', fontSize: '0.72rem' }}>{count} Học sinh</span>;
+                          }
+                          const targetCls = c.targetClasses || c.classIds || [];
+                          const names = classes.filter(cls => targetCls.includes(cls.id) || targetCls.includes(cls.name)).map(cls => cls.name).join(', ');
+                          return <span className="badge" style={{ background: 'rgba(59, 130, 246, 0.15)', color: '#60a5fa', border: '1px solid rgba(59, 130, 246, 0.3)', fontSize: '0.72rem' }}>{names || `${targetCls.length} Lớp`}</span>;
+                        })()}
+                      </div>
+                    </td>
+                    <td>
+                      <div style={{ display: 'flex', gap: '4px', flexWrap: 'wrap' }}>
+                        {c.problemIds.slice(0, 3).map(pId => {
+                          const prob = problems.find(p => p.id === pId || p.code === pId);
+                          return (
+                            <span 
+                              key={pId}
+                              onClick={() => prob && openTcManager(prob)}
+                              className="code-pill"
+                              style={{ cursor: 'pointer', fontSize: '0.7rem' }}
+                              title="Xem/sửa test case"
+                            >
+                              {prob ? prob.code : pId}
+                            </span>
+                          );
+                        })}
+                        {c.problemIds.length > 3 && (
+                          <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)', alignSelf: 'center' }}>
+                            +{c.problemIds.length - 3}
+                          </span>
+                        )}
+                      </div>
+                    </td>
+                    <td style={{ textAlign: 'right' }}>
+                      <div style={{ display: 'inline-flex', gap: '5px', alignItems: 'center' }}>
+                        {isRunning ? (
+                          <button
+                            type="button"
+                            className="btn btn-danger btn-sm"
+                            onClick={() => handleToggleStatus(c, 'ended')}
+                            style={{ padding: '3px 8px', fontSize: '0.74rem', display: 'inline-flex', alignItems: 'center', gap: '4px' }}
+                            title="Kết thúc kỳ thi ngay"
+                          >
+                            <StopCircle size={12} /> Dừng
+                          </button>
+                        ) : (
+                          <button
+                            type="button"
+                            className="btn btn-primary btn-sm"
+                            onClick={() => handleToggleStatus(c, 'running')}
+                            style={{ padding: '3px 8px', fontSize: '0.74rem', display: 'inline-flex', alignItems: 'center', gap: '4px' }}
+                            title={isUpcoming ? "Bắt đầu kỳ thi ngay" : "Mở lại kỳ thi"}
+                          >
+                            <Play size={12} /> {isUpcoming ? 'Bắt Đầu' : 'Mở Lại'}
+                          </button>
+                        )}
 
-                      {c.pdfUrl && (
                         <button
-                          className="badge"
-                          style={{
-                            background: 'rgba(239, 68, 68, 0.15)',
-                            color: '#f87171',
-                            border: '1px solid rgba(239, 68, 68, 0.3)',
-                            fontSize: '0.72rem',
-                            display: 'inline-flex',
-                            alignItems: 'center',
-                            gap: '3px',
-                            cursor: 'pointer'
-                          }}
-                          onClick={() => setPdfViewerModal({ title: c.title, url: `${serverUrl}${c.pdfUrl}`, fileName: c.pdfFileName })}
-                          title="Bấm để xem trực tiếp đề thi PDF"
+                          type="button"
+                          className="btn btn-secondary btn-sm"
+                          onClick={() => setQuickManageContest(c)}
+                          style={{ padding: '3px 7px', fontSize: '0.74rem', display: 'inline-flex', alignItems: 'center', gap: '3px' }}
+                          title="Quản lý nhanh đề bài & testcase"
                         >
-                          <FileText size={11} /> Đề PDF
+                          <Layers size={12} /> Đề & Test
                         </button>
-                      )}
-                    </div>
 
-                    <span className={`badge ${isRunning ? 'badge-running' : isUpcoming ? 'badge-upcoming' : 'badge-ended'}`}>
-                      {isRunning ? '● Đang thi' : isUpcoming ? 'Sắp diễn ra' : 'Đã kết thúc'}
-                    </span>
-                  </div>
-
-                  {/* Title & Description */}
-                  <h3 style={{ fontSize: '1.15rem', marginBottom: '8px', lineHeight: 1.3 }}>{c.title}</h3>
-                  <p style={{ fontSize: '0.82rem', color: 'var(--text-secondary)', marginBottom: '14px', lineClamp: 2, display: '-webkit-box', WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>
-                    {c.description || 'Chưa có mô tả quy chế làm bài.'}
-                  </p>
-
-                  {/* Info details */}
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', fontSize: '0.78rem', color: 'var(--text-secondary)', background: 'var(--bg-app)', padding: '10px 12px', borderRadius: 'var(--radius-sm)', marginBottom: '14px' }}>
-                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                      <span style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
-                        <Clock size={13} /> Thời lượng:
-                      </span>
-                      <strong>{c.durationMinutes} phút</strong>
-                    </div>
-
-                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                      <span style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
-                        <Layers size={13} /> Số bài tập:
-                      </span>
-                      <strong style={{ color: 'var(--accent-cyan)' }}>
-                        {c.problemIds?.length || 0} bài tập
-                      </strong>
-                    </div>
-
-                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                      <span style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
-                        <School size={13} /> Đối tượng:
-                      </span>
-                      <span style={{ maxWidth: '200px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                        {c.classIds.length === 0 
-                          ? 'Tất cả các lớp' 
-                          : classes.filter(cls => c.classIds.includes(cls.id)).map(cls => cls.name).join(', ') || `${c.classIds.length} lớp`}
-                      </span>
-                    </div>
-                  </div>
-
-                  {/* Problem Codes Chips */}
-                  <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap', marginBottom: '16px' }}>
-                    {c.problemIds.map(pId => {
-                      const prob = problems.find(p => p.id === pId || p.code === pId);
-                      return (
-                        <span 
-                          key={pId}
-                          onClick={() => prob && openTcManager(prob)}
-                          style={{
-                            fontSize: '0.72rem',
-                            fontFamily: 'var(--font-mono)',
-                            padding: '2px 8px',
-                            background: 'var(--bg-surface-elevated)',
-                            border: '1px solid var(--border-subtle)',
-                            borderRadius: '4px',
-                            color: 'var(--accent-cyan)',
-                            cursor: 'pointer',
-                            display: 'inline-flex',
-                            alignItems: 'center',
-                            gap: '4px'
-                          }}
-                          title="Bấm để xem/sửa test case của bài này"
+                        <button
+                          type="button"
+                          className="btn btn-outline btn-sm"
+                          onClick={() => handleOpenLeaderboard(c)}
+                          style={{ padding: '3px 7px', fontSize: '0.74rem', display: 'inline-flex', alignItems: 'center', gap: '3px' }}
+                          title="Xem xếp hạng"
                         >
-                          {prob ? prob.code : pId}
-                          {prob?.pdfUrl && <FileText size={10} color="#f87171" />}
-                          <span style={{ fontSize: '0.65rem', color: 'var(--text-muted)' }}>({prob?.testCases?.length || 0}t)</span>
-                        </span>
-                      );
-                    })}
-                  </div>
-                </div>
+                          <Trophy size={12} style={{ color: 'var(--accent-amber)' }} /> BXH
+                        </button>
 
-                {/* Action Buttons */}
-                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', borderTop: '1px solid var(--border-subtle)', paddingTop: '14px', gap: '8px', flexWrap: 'wrap' }}>
-                  {/* Status Toggle Button */}
-                  <div>
-                    {isRunning ? (
-                      <button
-                        className="btn btn-danger btn-sm"
-                        onClick={() => handleToggleStatus(c, 'ended')}
-                        style={{ display: 'inline-flex', alignItems: 'center', gap: '5px', fontSize: '0.76rem' }}
-                        title="Kết thúc kỳ thi ngay bây giờ"
-                      >
-                        <StopCircle size={13} /> Kết Thúc Thi
-                      </button>
-                    ) : isUpcoming ? (
-                      <button
-                        className="btn btn-primary btn-sm"
-                        onClick={() => handleToggleStatus(c, 'running')}
-                        style={{ display: 'inline-flex', alignItems: 'center', gap: '5px', fontSize: '0.76rem' }}
-                        title="Mở đề và bắt đầu kỳ thi ngay"
-                      >
-                        <Play size={13} /> Bắt Đầu Ngay
-                      </button>
-                    ) : (
-                      <button
-                        className="btn btn-outline btn-sm"
-                        onClick={() => handleToggleStatus(c, 'running')}
-                        style={{ display: 'inline-flex', alignItems: 'center', gap: '5px', fontSize: '0.76rem' }}
-                        title="Mở lại kỳ thi"
-                      >
-                        <Play size={13} /> Mở Lại Thi
-                      </button>
-                    )}
-                  </div>
+                        <button
+                          type="button"
+                          className="btn btn-primary btn-sm"
+                          onClick={() => handleOpenOfficialReport(c)}
+                          style={{ 
+                            padding: '3px 7px', 
+                            fontSize: '0.74rem', 
+                            background: 'linear-gradient(135deg, #059669 0%, #10b981 100%)',
+                            border: 'none',
+                            display: 'inline-flex', 
+                            alignItems: 'center', 
+                            gap: '3px' 
+                          }}
+                          title="Bảng điểm báo cáo chính thức"
+                        >
+                          <FileCheck size={12} /> Báo Cáo
+                        </button>
 
-                  <div style={{ display: 'flex', gap: '6px' }}>
-                    {/* Quản lý Đề & Test Cases của kỳ thi */}
-                    <button
-                      className="btn btn-secondary btn-sm"
-                      onClick={() => setQuickManageContest(c)}
-                      style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', fontSize: '0.76rem' }}
-                      title="Quản lý nhanh các đề bài và test case trong kỳ thi này"
-                    >
-                      <Layers size={13} /> Đề & Test ({c.problemIds?.length || 0})
-                    </button>
+                        <button
+                          type="button"
+                          className="btn btn-outline btn-sm"
+                          onClick={() => handleOpenEditModal(c)}
+                          style={{ padding: '3px 6px' }}
+                          title="Chỉnh sửa kỳ thi"
+                        >
+                          <Edit3 size={12} />
+                        </button>
 
-                    {/* View Leaderboard */}
-                    <button
-                      className="btn btn-outline btn-sm"
-                      onClick={() => handleOpenLeaderboard(c)}
-                      style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', fontSize: '0.76rem' }}
-                      title="Xem xếp hạng chi tiết của kỳ thi này"
-                    >
-                      <Trophy size={13} style={{ color: 'var(--accent-amber)' }} /> Xếp Hạng
-                    </button>
-
-                    {/* Tạo Bảng Điểm Báo Cáo Chính Thức (Chỉ REAL) */}
-                    <button
-                      className="btn btn-primary btn-sm"
-                      onClick={() => handleOpenOfficialReport(c)}
-                      style={{ 
-                        display: 'inline-flex', 
-                        alignItems: 'center', 
-                        gap: '4px', 
-                        fontSize: '0.76rem',
-                        fontWeight: 700,
-                        background: 'linear-gradient(135deg, #059669 0%, #10b981 100%)',
-                        borderColor: '#059669'
-                      }}
-                      title="Tạo bảng điểm chính thức để báo cáo, in ấn hoặc xuất PDF/Excel (Loại bỏ thí sinh thi ảo)"
-                    >
-                      <FileCheck size={13} /> Tạo Bảng Điểm
-                    </button>
-
-                    {/* Edit */}
-                    <button
-                      className="btn btn-outline btn-sm"
-                      onClick={() => handleOpenEditModal(c)}
-                      style={{ padding: '6px' }}
-                      title="Chỉnh sửa kỳ thi"
-                    >
-                      <Edit3 size={13} />
-                    </button>
-
-                    {/* Delete */}
-                    <button
-                      className="btn btn-outline btn-sm"
-                      onClick={() => handleDeleteContest(c.id, c.title)}
-                      style={{ padding: '6px', color: 'var(--accent-rose)' }}
-                      title="Xoá kỳ thi"
-                    >
-                      <Trash2 size={13} />
-                    </button>
-                  </div>
-                </div>
-              </div>
-            );
-          })}
+                        <button
+                          type="button"
+                          className="btn btn-outline btn-sm"
+                          onClick={() => handleDeleteContest(c.id, c.title)}
+                          style={{ padding: '3px 6px', color: 'var(--accent-rose)' }}
+                          title="Xóa kỳ thi"
+                        >
+                          <Trash2 size={12} />
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
         </div>
       )}
 
@@ -1795,7 +1778,269 @@ export const ContestManager: React.FC = () => {
                 </div>
               </div>
 
-              {/* 3. UPLOAD FILE PDF ĐỀ THI TỔNG HỢP CỦA KỲ THI */}
+              {/* 3. PHẠM VI ÁP DỤNG ĐỀ THI (Rule 28, 29, 34) */}
+              <div style={{ background: 'var(--bg-app)', border: '1px solid var(--border-subtle)', borderRadius: 'var(--radius-md)', padding: '16px' }}>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '12px' }}>
+                  <label style={{ fontSize: '0.85rem', fontWeight: 700, color: 'var(--accent-purple)', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                    <School size={16} /> PHẠM VI ĐỀ THI (ĐỐI TƯỢNG ĐƯỢC THI) *
+                  </label>
+                  <span style={{ fontSize: '0.74rem', color: 'var(--text-muted)' }}>
+                    Quy định học sinh nào sẽ nhìn thấy và được phép vào ca thi này
+                  </span>
+                </div>
+
+                {/* 4 Scope Radio Options */}
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '10px', marginBottom: '14px' }}>
+                  {/* 1. Toàn trường */}
+                  <label style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '8px',
+                    padding: '10px 12px',
+                    borderRadius: 'var(--radius-sm)',
+                    border: `1.5px solid ${(!formContest.scopeType || formContest.scopeType === 'ALL') ? 'var(--primary)' : 'var(--border-subtle)'}`,
+                    background: (!formContest.scopeType || formContest.scopeType === 'ALL') ? 'rgba(99, 102, 241, 0.1)' : 'transparent',
+                    cursor: 'pointer'
+                  }}>
+                    <input
+                      type="radio"
+                      name="scopeType"
+                      checked={!formContest.scopeType || formContest.scopeType === 'ALL'}
+                      onChange={() => setFormContest({ ...formContest, scopeType: 'ALL', targetClasses: [], classIds: [], targetStudents: [], candidateIds: [], targetGrades: [] })}
+                    />
+                    <span style={{ fontSize: '0.82rem', fontWeight: 600 }}>Toàn trường</span>
+                  </label>
+
+                  {/* 2. Theo khối */}
+                  <label style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '8px',
+                    padding: '10px 12px',
+                    borderRadius: 'var(--radius-sm)',
+                    border: `1.5px solid ${formContest.scopeType === 'GRADE' ? 'var(--accent-purple)' : 'var(--border-subtle)'}`,
+                    background: formContest.scopeType === 'GRADE' ? 'rgba(168, 85, 247, 0.1)' : 'transparent',
+                    cursor: 'pointer'
+                  }}>
+                    <input
+                      type="radio"
+                      name="scopeType"
+                      checked={formContest.scopeType === 'GRADE'}
+                      onChange={() => setFormContest({ ...formContest, scopeType: 'GRADE' })}
+                    />
+                    <span style={{ fontSize: '0.82rem', fontWeight: 600 }}>Theo khối</span>
+                  </label>
+
+                  {/* 3. Chọn lớp */}
+                  <label style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '8px',
+                    padding: '10px 12px',
+                    borderRadius: 'var(--radius-sm)',
+                    border: `1.5px solid ${formContest.scopeType === 'CLASS' ? 'var(--accent-cyan)' : 'var(--border-subtle)'}`,
+                    background: formContest.scopeType === 'CLASS' ? 'rgba(6, 182, 212, 0.1)' : 'transparent',
+                    cursor: 'pointer'
+                  }}>
+                    <input
+                      type="radio"
+                      name="scopeType"
+                      checked={formContest.scopeType === 'CLASS'}
+                      onChange={() => setFormContest({ ...formContest, scopeType: 'CLASS' })}
+                    />
+                    <span style={{ fontSize: '0.82rem', fontWeight: 600 }}>Chọn lớp</span>
+                  </label>
+
+                  {/* 4. Chọn học sinh */}
+                  <label style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '8px',
+                    padding: '10px 12px',
+                    borderRadius: 'var(--radius-sm)',
+                    border: `1.5px solid ${formContest.scopeType === 'STUDENT' ? 'var(--accent-rose)' : 'var(--border-subtle)'}`,
+                    background: formContest.scopeType === 'STUDENT' ? 'rgba(244, 63, 94, 0.1)' : 'transparent',
+                    cursor: 'pointer'
+                  }}>
+                    <input
+                      type="radio"
+                      name="scopeType"
+                      checked={formContest.scopeType === 'STUDENT'}
+                      onChange={() => setFormContest({ ...formContest, scopeType: 'STUDENT' })}
+                    />
+                    <span style={{ fontSize: '0.82rem', fontWeight: 600 }}>Chọn học sinh</span>
+                  </label>
+                </div>
+
+                {/* Contextual Scope Details */}
+                {(!formContest.scopeType || formContest.scopeType === 'ALL') && (
+                  <div style={{ fontSize: '0.78rem', color: 'var(--text-secondary)', padding: '8px 12px', background: 'rgba(255,255,255,0.02)', borderRadius: '4px' }}>
+                    ✓ Mọi học sinh trong toàn trường đều có thể nhìn thấy và làm bài thi này.
+                  </div>
+                )}
+
+                {formContest.scopeType === 'GRADE' && (
+                  <div style={{ padding: '12px', background: 'rgba(168, 85, 247, 0.05)', borderRadius: 'var(--radius-sm)', border: '1px solid rgba(168, 85, 247, 0.2)' }}>
+                    <div style={{ fontSize: '0.78rem', fontWeight: 700, color: 'var(--accent-purple)', marginBottom: '8px' }}>
+                      CHỌN CÁC KHỐI ĐƯỢC THI:
+                    </div>
+                    <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
+                      {[6, 7, 8, 9, 10, 11, 12].map(g => {
+                        const isChecked = (formContest.targetGrades || []).includes(g);
+                        return (
+                          <label key={g} style={{
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            gap: '6px',
+                            padding: '6px 14px',
+                            borderRadius: '6px',
+                            background: isChecked ? 'var(--accent-purple)' : 'var(--bg-surface)',
+                            color: isChecked ? '#fff' : 'var(--text-main)',
+                            border: `1px solid ${isChecked ? 'var(--accent-purple)' : 'var(--border-medium)'}`,
+                            cursor: 'pointer',
+                            fontSize: '0.82rem',
+                            fontWeight: 600
+                          }}>
+                            <input
+                              type="checkbox"
+                              checked={isChecked}
+                              onChange={e => {
+                                const current = formContest.targetGrades || [];
+                                const next = e.target.checked ? [...current, g] : current.filter(x => x !== g);
+                                setFormContest({ ...formContest, targetGrades: next });
+                              }}
+                            />
+                            <span>Khối {g}</span>
+                          </label>
+                        );
+                      })}
+                    </div>
+                    <div style={{ fontSize: '0.74rem', color: 'var(--text-muted)', marginTop: '8px' }}>
+                      Học sinh thuộc bất kỳ lớp nào trong các khối trên sẽ được phép tham gia.
+                    </div>
+                  </div>
+                )}
+
+                {formContest.scopeType === 'CLASS' && (
+                  <div style={{ padding: '12px', background: 'rgba(6, 182, 212, 0.05)', borderRadius: 'var(--radius-sm)', border: '1px solid rgba(6, 182, 212, 0.2)' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+                      <div style={{ fontSize: '0.78rem', fontWeight: 700, color: 'var(--accent-cyan)' }}>
+                        CHỌN CÁC LỚP ÁP DỤNG ({((formContest.targetClasses || formContest.classIds) || []).length}/{classes.length} lớp):
+                      </div>
+                      <div style={{ display: 'flex', gap: '6px' }}>
+                        <button
+                          type="button"
+                          className="btn btn-outline btn-sm"
+                          style={{ fontSize: '0.72rem', padding: '2px 8px' }}
+                          onClick={() => {
+                            const allIds = classes.map(c => c.id);
+                            setFormContest({ ...formContest, targetClasses: allIds, classIds: allIds });
+                          }}
+                        >
+                          Chọn tất cả
+                        </button>
+                        <button
+                          type="button"
+                          className="btn btn-outline btn-sm"
+                          style={{ fontSize: '0.72rem', padding: '2px 8px' }}
+                          onClick={() => setFormContest({ ...formContest, targetClasses: [], classIds: [] })}
+                        >
+                          Bỏ chọn
+                        </button>
+                      </div>
+                    </div>
+                    <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', maxHeight: '160px', overflowY: 'auto' }}>
+                      {classes.map(c => {
+                        const selected = (formContest.targetClasses || formContest.classIds || []).includes(c.id);
+                        return (
+                          <label key={c.id} style={{
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            gap: '6px',
+                            padding: '6px 12px',
+                            borderRadius: '6px',
+                            background: selected ? 'var(--primary)' : 'var(--bg-surface)',
+                            color: selected ? '#fff' : 'var(--text-main)',
+                            border: `1px solid ${selected ? 'var(--primary)' : 'var(--border-medium)'}`,
+                            cursor: 'pointer',
+                            fontSize: '0.82rem',
+                            fontWeight: 600
+                          }}>
+                            <input
+                              type="checkbox"
+                              checked={selected}
+                              onChange={e => {
+                                const current = formContest.targetClasses || formContest.classIds || [];
+                                const next = e.target.checked ? [...current, c.id] : current.filter(x => x !== c.id);
+                                setFormContest({ ...formContest, targetClasses: next, classIds: next });
+                              }}
+                            />
+                            <span>{c.name}</span>
+                          </label>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
+
+                {formContest.scopeType === 'STUDENT' && (
+                  <div style={{ padding: '12px', background: 'rgba(244, 63, 94, 0.05)', borderRadius: 'var(--radius-sm)', border: '1px solid rgba(244, 63, 94, 0.2)' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px', flexWrap: 'wrap', gap: '8px' }}>
+                      <div style={{ fontSize: '0.78rem', fontWeight: 700, color: 'var(--accent-rose)' }}>
+                        CHỌN HỌC SINH ĐƯỢC THI ({((formContest.targetStudents || formContest.candidateIds) || []).length} em):
+                      </div>
+                      <div style={{ position: 'relative', width: '220px' }}>
+                        <Search size={13} style={{ position: 'absolute', left: '8px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)' }} />
+                        <input
+                          type="text"
+                          placeholder="Tìm học sinh theo tên, user..."
+                          className="input-field"
+                          style={{ height: '28px', fontSize: '0.75rem', paddingLeft: '26px' }}
+                          value={studentScopeSearch}
+                          onChange={e => setStudentScopeSearch(e.target.value)}
+                        />
+                      </div>
+                    </div>
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(180px, 1fr))', gap: '6px', maxHeight: '180px', overflowY: 'auto' }}>
+                      {users.filter(u => u.role !== 'host').filter(u => {
+                        if (!studentScopeSearch.trim()) return true;
+                        const q = studentScopeSearch.toLowerCase();
+                        return (u.fullName || '').toLowerCase().includes(q) || (u.username || '').toLowerCase().includes(q);
+                      }).map(u => {
+                        const selected = (formContest.targetStudents || formContest.candidateIds || []).includes(u.id);
+                        return (
+                          <label key={u.id} style={{
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '6px',
+                            padding: '6px 8px',
+                            borderRadius: '4px',
+                            background: selected ? 'rgba(244, 63, 94, 0.15)' : 'var(--bg-surface)',
+                            border: `1px solid ${selected ? 'rgba(244, 63, 94, 0.4)' : 'var(--border-subtle)'}`,
+                            cursor: 'pointer',
+                            fontSize: '0.78rem'
+                          }}>
+                            <input
+                              type="checkbox"
+                              checked={selected}
+                              onChange={e => {
+                                const current = formContest.targetStudents || formContest.candidateIds || [];
+                                const next = e.target.checked ? [...current, u.id] : current.filter(x => x !== u.id);
+                                setFormContest({ ...formContest, targetStudents: next, candidateIds: next });
+                              }}
+                            />
+                            <span style={{ fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                              {u.fullName || u.username}
+                            </span>
+                          </label>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {/* 4. UPLOAD FILE PDF ĐỀ THI TỔNG HỢP CỦA KỲ THI */}
               <div style={{ 
                 background: 'var(--bg-surface-elevated)', 
                 border: '1px solid var(--border-medium)', 

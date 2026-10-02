@@ -74,7 +74,7 @@ export const StudentManager: React.FC = () => {
   const [loadingHistory, setLoadingHistory] = useState(false);
 
   // Forms
-  const [singleForm, setSingleForm] = useState({ username: '', fullName: '', classId: '', password: '123' });
+  const [singleForm, setSingleForm] = useState({ username: '', fullName: '', classId: '', classes: [] as string[], password: '123' });
   const [batchPrefix, setBatchPrefix] = useState('hs');
   const [batchFrom, setBatchFrom] = useState(1);
   const [batchTo, setBatchTo] = useState(40);
@@ -193,7 +193,10 @@ export const StudentManager: React.FC = () => {
 
   // Filtered Students in Directory
   const filteredStudents = students.filter(s => {
-    if (selectedClassFilter !== 'all' && s.classId !== selectedClassFilter) return false;
+    if (selectedClassFilter !== 'all') {
+      const sClasses = Array.isArray(s.classes) && s.classes.length > 0 ? s.classes : (s.classId ? [s.classId] : []);
+      if (!sClasses.includes(selectedClassFilter)) return false;
+    }
     const isOnline = onlineList.some(o => o.userId === s.id);
     if (selectedStatusFilter === 'online' && !isOnline) return false;
     if (selectedStatusFilter === 'offline' && isOnline) return false;
@@ -241,6 +244,10 @@ export const StudentManager: React.FC = () => {
       alert('Vui lòng nhập tên đăng nhập');
       return;
     }
+    const chosenClasses = singleForm.classes.length > 0 
+      ? singleForm.classes 
+      : (singleForm.classId ? [singleForm.classId] : (classes[0]?.id ? [classes[0].id] : []));
+
     try {
       const res = await apiFetch(`${serverUrl}/api/users`, {
         method: 'POST',
@@ -248,7 +255,8 @@ export const StudentManager: React.FC = () => {
         body: JSON.stringify({
           username: singleForm.username.trim().toLowerCase(),
           fullName: singleForm.fullName.trim() || singleForm.username.trim(),
-          classId: singleForm.classId || classes[0]?.id,
+          classId: chosenClasses[0] || classes[0]?.id,
+          classes: chosenClasses,
           password: singleForm.password || '123456',
           role: 'user'
         })
@@ -260,7 +268,7 @@ export const StudentManager: React.FC = () => {
           alert(`Mật khẩu tạm thời đã được sao chép:\n${data.temporaryPassword}\nHọc sinh phải đổi mật khẩu sau khi đăng nhập.`);
         }
         setShowAddSingleModal(false);
-        setSingleForm({ username: '', fullName: '', classId: classes[0]?.id || '', password: '123456' });
+        setSingleForm({ username: '', fullName: '', classId: classes[0]?.id || '', classes: [], password: '123456' });
         loadData();
       } else {
         const err = await res.json();
@@ -734,9 +742,26 @@ export const StudentManager: React.FC = () => {
                           {s.username}
                         </td>
                         <td style={{ padding: '12px 16px' }}>
-                          <span className="badge" style={{ background: 'var(--bg-app)', border: '1px solid var(--border-medium)', fontSize: '0.75rem' }}>
-                            {cls ? cls.name : 'Chưa xếp lớp'}
-                          </span>
+                          <div style={{ display: 'flex', gap: '4px', flexWrap: 'wrap' }}>
+                            {(() => {
+                              const sClasses = Array.isArray(s.classes) && s.classes.length > 0 ? s.classes : (s.classId ? [s.classId] : []);
+                              if (sClasses.length === 0) {
+                                return (
+                                  <span className="badge badge-neutral" style={{ fontSize: '0.72rem' }}>
+                                    {cls ? cls.name : 'Chưa xếp lớp'}
+                                  </span>
+                                );
+                              }
+                              return sClasses.map(cId => {
+                                const matched = classes.find(c => c.id === cId || c.name === cId);
+                                return (
+                                  <span key={cId} className="badge" style={{ background: 'rgba(59, 130, 246, 0.12)', color: '#60a5fa', border: '1px solid rgba(59, 130, 246, 0.25)', fontSize: '0.72rem' }}>
+                                    {matched ? matched.name : cId}
+                                  </span>
+                                );
+                              });
+                            })()}
+                          </div>
                         </td>
                         <td style={{ padding: '12px 16px' }}>
                           {live ? (
@@ -1572,16 +1597,39 @@ export const StudentManager: React.FC = () => {
               </div>
 
               <div style={{ marginBottom: '14px' }}>
-                <label style={{ fontSize: '0.8rem', fontWeight: 600, display: 'block', marginBottom: '6px' }}>LỚP HỌC</label>
-                <select
-                  className="input-field"
-                  value={singleForm.classId}
-                  onChange={e => setSingleForm({ ...singleForm, classId: e.target.value })}
-                >
-                  {classes.map(c => (
-                    <option key={c.id} value={c.id}>{c.name}</option>
-                  ))}
-                </select>
+                <label style={{ fontSize: '0.8rem', fontWeight: 600, display: 'block', marginBottom: '6px' }}>
+                  LỚP HỌC (Một học sinh có thể tham gia nhiều lớp)
+                </label>
+                <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap', maxHeight: '120px', overflowY: 'auto', padding: '8px', background: 'var(--bg-app)', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border-subtle)' }}>
+                  {classes.map(c => {
+                    const isChecked = singleForm.classes.includes(c.id);
+                    return (
+                      <label key={c.id} style={{
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        gap: '6px',
+                        padding: '4px 8px',
+                        borderRadius: '4px',
+                        background: isChecked ? 'rgba(59, 130, 246, 0.2)' : 'var(--bg-surface)',
+                        border: `1px solid ${isChecked ? 'var(--primary)' : 'var(--border-subtle)'}`,
+                        cursor: 'pointer',
+                        fontSize: '0.78rem'
+                      }}>
+                        <input
+                          type="checkbox"
+                          checked={isChecked}
+                          onChange={e => {
+                            const next = e.target.checked
+                              ? [...singleForm.classes, c.id]
+                              : singleForm.classes.filter(x => x !== c.id);
+                            setSingleForm({ ...singleForm, classes: next, classId: next[0] || '' });
+                          }}
+                        />
+                        <span>{c.name}</span>
+                      </label>
+                    );
+                  })}
+                </div>
               </div>
 
               <div style={{ marginBottom: '20px' }}>

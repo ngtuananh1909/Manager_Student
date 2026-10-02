@@ -57,7 +57,7 @@ export const JudgeSettings: React.FC = () => {
   const handlePublishUpdate = async () => {
     const electronAPI = (window as any).electronAPI;
     if (!electronAPI?.publishUpdateFile) {
-      alert('Chức năng này chỉ khả dụng khi chạy trên ứng dụng SchoolJudge LAN Desktop.');
+      alert('Chức năng này chỉ khả dụng khi chạy trên ứng dụng ChauCaoJudge LAN Desktop.');
       return;
     }
 

@@ -24,3 +24,7 @@ testcases/*
 # OS generated
 .DS_Store
 Thumbs.db
+
+# Large local test archives & reports
+T11_Test_Olympic_chuyen_lan_1/
+*.csv
