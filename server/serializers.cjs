@@ -26,6 +26,8 @@ function sanitizeProblemForStudent(problem) {
     ioMode: problem.ioMode || 'stdin',
     inputFile: problem.inputFile,
     outputFile: problem.outputFile,
+    hasSolution: !!(problem.solution && problem.solution.trim()),
+    solutionVisible: !!problem.solutionVisible,
     samples,
     testCases: []
   };
@@ -36,6 +38,8 @@ function sanitizeProblemForHost(problem) {
   const safe = { ...problem };
   delete safe._pdfDiskPath;
   safe.testCount = problem.testCount ?? (Array.isArray(problem.testCases) ? problem.testCases.length : 0);
+  safe.hasSolution = !!(problem.solution && problem.solution.trim());
+  safe.solutionVisible = !!problem.solutionVisible;
   safe.testCases = [];
   return safe;
 }
