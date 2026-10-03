@@ -1,13 +1,9 @@
 # ==============================================================================
-# ChauCaoJudge LAN — Docker Compose 1-Click Setup
+# ChauCaoJudge — Docker Compose Full Stack (PostgreSQL + App + Caddy SSL)
 # ==============================================================================
-# Chỉ cần chạy:
+# Tên miền chính thức: chaucaojudge.xyz
+# Khởi chạy:
 #   docker compose up -d
-# Docker sẽ tự động:
-#   1. Kéo image PostgreSQL 16 Alpine & pgweb Web UI
-#   2. Khởi tạo Database "schooljudge", User "sj_admin", mật khẩu
-#   3. Tự động chạy toàn bộ schema 17 bảng từ server/database/schema.sql
-#   4. Khởi chạy Web UI xem CSDL trực quan trên http://localhost:5000
 # ==============================================================================
 
 services:
@@ -21,7 +17,7 @@ services:
       POSTGRES_USER: ${PG_USER:-sj_admin}
       POSTGRES_PASSWORD: ${PG_PASSWORD:-sj_secret_local_lan_2026}
     ports:
-      # Bind vào localhost máy host để đảm bảo an toàn mạng LAN
+      # Mở cổng 5432 để máy host hoặc các tool như DBeaver kết nối
       - "127.0.0.1:${PG_PORT:-5432}:5432"
     volumes:
       # Dữ liệu bền vững lưu trên volume Docker
@@ -47,6 +43,52 @@ services:
       postgres:
         condition: service_healthy
 
+  # 3. Ứng dụng ChauCaoJudge Server & Web
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: schooljudge_app
+    restart: unless-stopped
+    ports:
+      - "4000:4000"
+    environment:
+      - PORT=4000
+      - NODE_ENV=production
+      - SCHOOLJUDGE_DB_MODE=postgres
+      - PG_HOST=postgres
+      - PG_PORT=5432
+      - PG_DATABASE=${PG_DATABASE:-schooljudge}
+      - PG_USER=${PG_USER:-sj_admin}
+      - PG_PASSWORD=${PG_PASSWORD:-sj_secret_local_lan_2026}
+      - APP_DOMAIN=chaucaojudge.xyz
+      - APP_URL=https://chaucaojudge.xyz
+    volumes:
+      - ./storage:/app/storage
+      - ./uploads:/app/uploads
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  # 4. Caddy Reverse Proxy (Tự động cấp chứng chỉ SSL HTTPS miễn phí cho chaucaojudge.xyz)
+  caddy:
+    image: caddy:alpine
+    container_name: schooljudge_caddy
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      - app
+
 volumes:
   sj_postgres_data:
+    driver: local
+  caddy_data:
+    driver: local
+  caddy_config:
     driver: local

@@ -19,7 +19,22 @@ try {
   pgAvailable = true;
 } catch (e) {}
 
-test('PostgreSQL Database Repositories Integration Test', { skip: !pgAvailable && 'pg module not installed' }, async (t) => {
+(async () => {
+  let skipReason = false;
+  if (!pgAvailable) {
+    skipReason = 'pg module not installed';
+  } else {
+    try {
+      const conn = await pool.testConnection();
+      if (!conn.ok) {
+        skipReason = 'PostgreSQL container not running (run "docker compose up -d" to test)';
+      }
+    } catch {
+      skipReason = 'PostgreSQL connection failed';
+    }
+  }
+
+  test('PostgreSQL Database Repositories Integration Test', { skip: skipReason }, async (t) => {
   const testSuffix = Date.now();
 
   await t.test('1. Test Connection', async () => {
@@ -175,3 +190,4 @@ test('PostgreSQL Database Repositories Integration Test', { skip: !pgAvailable &
     if (testClass2) await classesRepo.deleteClass(testClass2.id);
   });
 });
+})();

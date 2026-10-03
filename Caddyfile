@@ -1,42 +1,20 @@
-# Caddyfile - Reverse Proxy & Tự Động Cấp Chứng Chỉ SSL (HTTPS) Cho SchoolJudge LAN
-# Thay thế "truong-abc.duckdns.org" bằng subdomain DuckDNS thực tế của bạn
+# ==============================================================================
+# ChauCaoJudge — Caddy Reverse Proxy & Auto HTTPS (SSL) cho chaucaojudge.xyz
+# ==============================================================================
 
-truong-abc.duckdns.org {
-    # 1. Reverse proxy các API và Socket.IO vào Backend port 4000
-    handle /api/* {
-        reverse_proxy localhost:4000
+chaucaojudge.xyz {
+    # Reverse proxy tới container app cổng 4000 (hỗ trợ cả REST API và Socket.IO WebSockets)
+    reverse_proxy app:4000 {
+        header_up Host {host}
+        header_up X-Real-IP {remote_host}
+        header_up X-Forwarded-For {remote_host}
+        header_up X-Forwarded-Proto {scheme}
     }
 
-    handle /socket.io/* {
-        reverse_proxy localhost:4000
-    }
-
-    # 2. Reverse proxy giao diện người dùng (Frontend) port 5173
-    handle {
-        reverse_proxy localhost:5173
-    }
-
-    # Tự động nén dữ liệu & bảo mật
     encode gzip zstd
 
-    # Giới hạn kích thước payload (tránh nộp code quá lớn)
+    # Giới hạn dung lượng tải lên (hỗ trợ đề thi và testcase lớn lên tới 500MB)
     request_body {
-        max_size 10MB
-    }
-
-    # Header bảo mật
-    header {
-        Strict-Transport-Security "max-age=31536000; includeSubDomains; preload"
-        X-Content-Type-Options "nosniff"
-        X-Frame-Options "DENY"
-        Referrer-Policy "strict-origin-when-cross-origin"
-    }
-
-    # Ghi log truy cập để theo dõi an ninh
-    log {
-        output file ./logs/caddy_access.log {
-            roll_size 10mb
-            roll_keep 5
-        }
+        max_size 500MB
     }
 }

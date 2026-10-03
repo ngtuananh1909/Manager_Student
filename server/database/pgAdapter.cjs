@@ -41,7 +41,22 @@ class PgAdapter {
     try {
       const isConnected = await pool.testConnection();
       if (!isConnected.ok) {
-        console.warn('[PgAdapter] Không thể kết nối tới PostgreSQL, sử dụng cache rỗng ban đầu:', isConnected.error);
+        console.warn('⚠️ [PgAdapter] PostgreSQL chưa chạy (Docker offline). Tự động nạp dữ liệu từ schooljudge_data.json để tiếp tục hoạt động.');
+        try {
+          const fallbackDb = require('../db.cjs');
+          const fbData = fallbackDb.load();
+          this.cache.settings = fbData.settings || settingsRepo.DEFAULT_SETTINGS;
+          this.cache.classes = fbData.classes || [];
+          this.cache.users = fbData.users || [];
+          this.cache.problems = fbData.problems || [];
+          this.cache.contests = fbData.contests || [];
+          this.cache.submissions = fbData.submissions || [];
+          this.cache.achievements = fbData.achievements || [];
+          this.cache.rewards = fbData.rewards || [];
+          this.isReady = true;
+        } catch (e) {
+          console.error('[PgAdapter] Fallback nạp JSON thất bại:', e);
+        }
         return;
       }
 

@@ -265,7 +265,7 @@ export const LANDiscoveryModal: React.FC<Props> = ({ isOpen, onClose }) => {
             }}>
               <strong style={{ color: 'var(--accent-cyan)' }}>Dành cho học sinh làm bài tập từ nhà:</strong>
               <br />
-              Nhập tên miền Dynamic DNS qua giao thức <strong>HTTPS</strong> (ví dụ: <code>https://truong-abc.duckdns.org</code> hoặc link <code>https://...trycloudflare.com</code>).
+              Nhập tên miền Dynamic DNS / Web qua giao thức <strong>HTTPS</strong> (ví dụ: <code>https://chaucaojudge.xyz</code> hoặc link <code>https://...trycloudflare.com</code>).
             </div>
 
             <div>
@@ -276,7 +276,7 @@ export const LANDiscoveryModal: React.FC<Props> = ({ isOpen, onClose }) => {
                 <input
                   type="text"
                   className="input-field"
-                  placeholder="https://truong-abc.duckdns.org"
+                  placeholder="https://chaucaojudge.xyz"
                   value={tempInternetUrl}
                   onChange={(e) => setTempInternetUrl(e.target.value)}
                 />

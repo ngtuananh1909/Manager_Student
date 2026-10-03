@@ -28,3 +28,6 @@ Thumbs.db
 # Large local test archives & reports
 T11_Test_Olympic_chuyen_lan_1/
 *.csv
+
+# Local environment configuration
+.env
