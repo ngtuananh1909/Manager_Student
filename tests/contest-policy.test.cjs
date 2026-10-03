@@ -188,6 +188,13 @@ test('virtual session lifecycle: leaving screen sets LEFT, only finish sets COMP
   const leftSession2 = db.leaveVirtualSession(session2.id);
   assert.equal(leftSession2.status, 'left');
   assert.equal(leftSession2.allowReopen, false);
+
+  // Cleanup test artifacts from database
+  try {
+    db.data.contests = (db.data.contests || []).filter(c => c.id !== contest.id && c.id !== contestNoReopen.id);
+    db.data.virtual_sessions = (db.data.virtual_sessions || []).filter(s => s.id !== session.id && s.id !== session2.id);
+    db.save();
+  } catch (e) {}
 });
 
 test('scoring modes: LIVE_BEST, OLYMPIC_LATEST, and PRETEST acceptance tests', () => {
