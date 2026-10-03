@@ -2373,6 +2373,23 @@ app.put('/api/rewards/redemptions/:id/status', requireHost, (req, res) => {
   }
 });
 
+// ─── STATIC WEB APPLICATION SERVING (BROWSER & CROSS-PLATFORM) ─────────────
+const distDir = path.join(__dirname, '../dist');
+if (fs.existsSync(distDir)) {
+  app.use(express.static(distDir));
+  app.use((req, res, next) => {
+    if (req.method !== 'GET') return next();
+    if (req.path.startsWith('/api') || req.path.startsWith('/socket.io') || req.path.startsWith('/uploads')) {
+      return next();
+    }
+    const indexPath = path.join(distDir, 'index.html');
+    if (fs.existsSync(indexPath)) {
+      return res.sendFile(indexPath);
+    }
+    next();
+  });
+}
+
 // Start Server with graceful EADDRINUSE handling
 function startServer(port = 4000) {
   if (server.listening) {
