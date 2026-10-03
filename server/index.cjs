@@ -21,6 +21,7 @@ const queue = require('./queue.cjs');
 const lan = require('./lanDiscovery.cjs');
 const antiCheat = require('./antiCheat.cjs');
 const mammoth = require('mammoth');
+const arena = require('./arena.cjs');
 
 // Read version from package.json dynamically
 const APP_VERSION = (() => {
@@ -71,6 +72,7 @@ const io = new Server(server, {
 });
 
 queue.setSocketIO(io);
+arena.init(io, db, judge);
 
 // Rate limiting & Brute-force protection stores
 const submissionTimestamps = new Map(); // ip/userId -> lastTimestamp
@@ -2546,6 +2548,37 @@ app.post('/api/student/custom-contests/:id/run', async (req, res) => {
     });
 
     res.json(result);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ─── TOURNAMENT ARENA (SWISS STAGE 1V1 ARENA) ───────────────────────────────
+app.get('/api/arena/profile', (req, res) => {
+  try {
+    const profile = arena.getUserArenaProfile(req.user.id);
+    res.json(profile || { rating: 1200, wins: 0, losses: 0, draws: 0, winRate: 0 });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.get('/api/arena/leaderboard', (req, res) => {
+  try {
+    const board = arena.getArenaLeaderboard();
+    res.json(board);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.get('/api/arena/active-match', (req, res) => {
+  try {
+    const matchId = arena.userMatchMap.get(req.user.id);
+    if (!matchId) return res.json({ hasActiveMatch: false });
+    const match = arena.activeMatches.get(matchId);
+    if (!match || match.status !== 'RUNNING') return res.json({ hasActiveMatch: false });
+    res.json({ hasActiveMatch: true, match: arena.sanitizeMatchForPlayer(match, req.user.id) });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
