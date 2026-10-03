@@ -9,6 +9,7 @@ release/
 
 # Temp files and judge runners
 .temp_runner/
+toolchain/
 *.tmp
 *.exe
 *.o

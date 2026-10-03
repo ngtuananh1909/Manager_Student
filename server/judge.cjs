@@ -40,6 +40,9 @@ class JudgeEngine {
     let hasDocker = false;
     let dockerVersion = '';
     let imageAvailable = false;
+    let hasNativeGpp = false;
+    let nativeGppPath = '';
+    let nativeGppVersion = '';
 
     try {
       const out = execSync('docker --version', {
@@ -64,11 +67,40 @@ class JudgeEngine {
       }
     }
 
+    const candidatePaths = [
+      path.join(process.cwd(), 'toolchain', 'w64devkit', 'bin', 'g++.exe'),
+      path.join(process.cwd(), 'toolchain', 'bin', 'g++.exe'),
+      'g++',
+      'C:\\w64devkit\\bin\\g++.exe',
+      'C:\\MinGW\\bin\\g++.exe',
+      'C:\\Program Files\\CodeBlocks\\MinGW\\bin\\g++.exe'
+    ];
+
+    for (const p of candidatePaths) {
+      try {
+        if (p.includes('\\') && !fs.existsSync(p)) continue;
+        const out = execSync(`"${p}" --version`, {
+          timeout: 3000,
+          stdio: ['ignore', 'pipe', 'ignore']
+        }).toString().trim();
+        hasNativeGpp = true;
+        nativeGppPath = p;
+        nativeGppVersion = out.split('\n')[0];
+        break;
+      } catch (e) {}
+    }
+
+    const mode = (hasDocker && imageAvailable) ? 'docker' : (hasNativeGpp ? 'native' : 'none');
+
     return {
+      mode,
       hasDocker,
       dockerVersion,
       imageAvailable,
       dockerImage: DOCKER_IMAGE,
+      hasNativeGpp,
+      nativeGppPath,
+      nativeGppVersion,
       platform: process.platform
     };
   }
@@ -166,16 +198,76 @@ class JudgeEngine {
     return { diff: normalized.slice(0, maxLines), truncated, totalDiffCount };
   }
 
-  // ── Docker: compile C++ source into a named binary ────────────────────────
+  // ── Unified Compile Code (Docker or Native G++) ──────────────────────────
 
   async compileCode(subId, code) {
+    const info = this._getCompilerInfo();
+    if (info.mode === 'docker') {
+      return this.compileCodeDocker(subId, code);
+    }
+    return this.compileCodeNative(subId, code);
+  }
+
+  async compileCodeNative(subId, code) {
+    const subFolder = path.join(this.tempDir, `sub_${subId}_${crypto.randomBytes(4).toString('hex')}`);
+    fs.mkdirSync(subFolder, { recursive: true });
+
+    const sourcePath = path.join(subFolder, 'solution.cpp');
+    const binaryExt = process.platform === 'win32' ? '.exe' : '';
+    const binaryPath = path.join(subFolder, `solution${binaryExt}`);
+    fs.writeFileSync(sourcePath, code, 'utf8');
+
+    const compiler = this._getCompilerInfo().nativeGppPath || 'g++';
+    const compilerDir = path.dirname(compiler);
+    const env = Object.assign({}, process.env, {
+      PATH: compilerDir + (process.platform === 'win32' ? ';' : ':') + (process.env.PATH || '')
+    });
+    const compileArgs = ['-O2', '-std=c++17', '-o', binaryPath, sourcePath];
+
+    return new Promise((resolve) => {
+      let stderr = '';
+      const child = spawn(compiler, compileArgs, {
+        cwd: subFolder,
+        windowsHide: true,
+        env,
+        stdio: ['ignore', 'ignore', 'pipe']
+      });
+
+      const timer = setTimeout(() => {
+        try { child.kill('SIGKILL'); } catch (e) {}
+        fs.rmSync(subFolder, { recursive: true, force: true });
+        resolve({ success: false, error: 'Compile timeout (10 000 ms)' });
+      }, 10000);
+
+      child.stderr.on('data', (d) => {
+        if (stderr.length < 64 * 1024) stderr += d.toString();
+      });
+
+      child.on('error', (err) => {
+        clearTimeout(timer);
+        fs.rmSync(subFolder, { recursive: true, force: true });
+        resolve({ success: false, error: `g++ spawn failed: ${err.message}` });
+      });
+
+      child.on('close', (code) => {
+        clearTimeout(timer);
+        if (code !== 0 || !fs.existsSync(binaryPath)) {
+          fs.rmSync(subFolder, { recursive: true, force: true });
+          resolve({ success: false, error: stderr || `g++ exited with code ${code}` });
+        } else {
+          resolve({ success: true, binaryPath, subFolder });
+        }
+      });
+    });
+  }
+
+  async compileCodeDocker(subId, code) {
     const subFolder = path.join(this.tempDir, `sub_${subId}_${crypto.randomBytes(4).toString('hex')}`);
     fs.mkdirSync(subFolder, { recursive: true });
 
     const sourcePath = path.join(subFolder, 'solution.cpp');
     fs.writeFileSync(sourcePath, code, 'utf8');
 
-    // Compile inside Docker: mount only the per-submission folder read-write
     const compileArgs = [
       'run', '--rm',
       '--network=none',
@@ -188,7 +280,7 @@ class JudgeEngine {
       `--cpus=1`,
       `--pids-limit=${DOCKER_PIDS_LIMIT}`,
       '--security-opt=no-new-privileges',
-      '--user=65534:65534', // nobody
+      '--user=65534:65534',
       '--cap-drop=ALL',
       DOCKER_IMAGE,
       'g++', '-O2', '-std=c++17', '-o', '/work/solution', '/work/solution.cpp'
@@ -229,9 +321,186 @@ class JudgeEngine {
     });
   }
 
-  // ── Docker: run a compiled binary against one test input ──────────────────
+  // ── Unified runSingleTest (Docker or Native) ──────────────────────────────
 
   async runSingleTest(binaryPath, subFolder, inputData, timeLimitMs, memoryLimitMb, problemCode = '', requireFreopen = false) {
+    const info = this._getCompilerInfo();
+    if (info.mode === 'docker') {
+      return this.runSingleTestDocker(binaryPath, subFolder, inputData, timeLimitMs, memoryLimitMb, problemCode, requireFreopen);
+    }
+    return this.runSingleTestNative(binaryPath, subFolder, inputData, timeLimitMs, memoryLimitMb, problemCode, requireFreopen);
+  }
+
+  async runSingleTestNative(binaryPath, subFolder, inputData, timeLimitMs, memoryLimitMb, problemCode = '', requireFreopen = false) {
+    const codeName = problemCode ? problemCode.trim() : '';
+
+    const candidateNames = new Set();
+    if (codeName) {
+      candidateNames.add(codeName);
+      candidateNames.add(codeName.toLowerCase());
+      candidateNames.add(codeName.toUpperCase());
+    }
+
+    try {
+      const srcPath = path.join(subFolder, 'solution.cpp');
+      if (fs.existsSync(srcPath)) {
+        const srcContent = fs.readFileSync(srcPath, 'utf8');
+        const taskMatch = srcContent.match(/#define\s+TASK\s+["']([^"'\\]+)["']/i);
+        if (taskMatch && taskMatch[1]) {
+          candidateNames.add(taskMatch[1]);
+          candidateNames.add(taskMatch[1].toLowerCase());
+          candidateNames.add(taskMatch[1].toUpperCase());
+        }
+        const freopenMatches = srcContent.matchAll(/freopen\s*\(\s*["']([^"'\\]+)\.inp["']/gi);
+        for (const fm of freopenMatches) {
+          if (fm && fm[1]) {
+            candidateNames.add(fm[1]);
+            candidateNames.add(fm[1].toLowerCase());
+            candidateNames.add(fm[1].toUpperCase());
+          }
+        }
+      }
+    } catch (e) {}
+
+    try {
+      const files = fs.readdirSync(subFolder);
+      for (const f of files) {
+        if (f.toLowerCase().endsWith('.out')) {
+          try { fs.unlinkSync(path.join(subFolder, f)); } catch (e) {}
+        }
+      }
+    } catch (e) {}
+
+    const createdInpPaths = [];
+    const writeInp = (filename) => {
+      try {
+        const p = path.join(subFolder, filename);
+        fs.writeFileSync(p, inputData, 'utf8');
+        createdInpPaths.push(p);
+      } catch (e) {}
+    };
+
+    writeInp('.inp');
+    writeInp('.INP');
+    for (const name of candidateNames) {
+      writeInp(`${name}.inp`);
+      writeInp(`${name}.INP`);
+    }
+
+    return new Promise((resolve) => {
+      const startTime = process.hrtime.bigint();
+      let stdout = '';
+      let stderr = '';
+      let isTimeout = false;
+      let killed = false;
+
+      const compiler = this._getCompilerInfo().nativeGppPath || '';
+      const compilerDir = compiler ? path.dirname(compiler) : '';
+      const env = Object.assign({}, process.env, {
+        PATH: compilerDir ? `${compilerDir};${process.env.PATH || ''}` : process.env.PATH
+      });
+
+      const child = spawn(binaryPath, [], {
+        cwd: subFolder,
+        windowsHide: true,
+        env,
+        stdio: ['pipe', 'pipe', 'pipe']
+      });
+
+      const timer = setTimeout(() => {
+        isTimeout = true;
+        killed = true;
+        try {
+          if (process.platform === 'win32' && child.pid) {
+            execSync(`taskkill /pid ${child.pid} /t /f`, { stdio: 'ignore' });
+          } else {
+            child.kill('SIGKILL');
+          }
+        } catch (e) {}
+      }, timeLimitMs + 500);
+
+      try {
+        child.stdin.write(inputData);
+        child.stdin.end();
+      } catch (e) {}
+
+      child.stdout.on('data', (chunk) => {
+        if (stdout.length < OUTPUT_CAP_BYTES) stdout += chunk.toString();
+      });
+
+      child.stderr.on('data', (chunk) => {
+        if (stderr.length < 8 * 1024) stderr += chunk.toString();
+      });
+
+      child.on('error', (err) => {
+        clearTimeout(timer);
+        const durationMs = Number((process.hrtime.bigint() - startTime) / 1000000n);
+        resolve({ status: 'RE', error: err.message, time: durationMs, memory: 0, output: stdout });
+      });
+
+      child.on('close', (code) => {
+        clearTimeout(timer);
+        const durationMs = Math.max(1, Number((process.hrtime.bigint() - startTime) / 1000000n));
+
+        let effectiveOutput = stdout;
+        let foundOutFile = false;
+
+        try {
+          const files = fs.readdirSync(subFolder);
+          const outFiles = files.filter(f => f.toLowerCase().endsWith('.out'));
+          for (const ofile of outFiles) {
+            const outPath = path.join(subFolder, ofile);
+            if (fs.existsSync(outPath) && fs.statSync(outPath).isFile()) {
+              const fc = fs.readFileSync(outPath, 'utf8');
+              foundOutFile = true;
+              if (fc.length > 0 || !effectiveOutput.trim()) {
+                effectiveOutput = fc;
+                break;
+              }
+            }
+          }
+        } catch (e) {}
+
+        for (const p of createdInpPaths) {
+          try { if (fs.existsSync(p)) fs.unlinkSync(p); } catch (e) {}
+        }
+        try {
+          const files = fs.readdirSync(subFolder);
+          for (const f of files) {
+            if (f.toLowerCase().endsWith('.out') || f.toLowerCase().endsWith('.inp') || f === '.inp' || f === '.out') {
+              try { fs.unlinkSync(path.join(subFolder, f)); } catch (e) {}
+            }
+          }
+        } catch (e) {}
+
+        if (requireFreopen && !foundOutFile) {
+          return resolve({
+            status: 'WA', time: durationMs, memory: 0, output: effectiveOutput,
+            message: `Quy chế thi bắt buộc dùng freopen. Không tìm thấy tệp đầu ra (.out).`
+          });
+        }
+
+        if (isTimeout) {
+          return resolve({
+            status: 'TLE', time: timeLimitMs, memory: memoryLimitMb || 0,
+            output: effectiveOutput,
+            message: `Chạy quá thời gian quy định (${timeLimitMs}ms)`
+          });
+        }
+
+        if (code !== 0 && !killed) {
+          return resolve({
+            status: 'RE', time: durationMs, memory: 0, output: effectiveOutput,
+            message: `Runtime Error (exit ${code}): ${stderr || 'Segmentation fault hoặc chia cho 0'}`
+          });
+        }
+
+        resolve({ status: 'OK', time: durationMs, memory: 0, output: effectiveOutput });
+      });
+    });
+  }
+
+  async runSingleTestDocker(binaryPath, subFolder, inputData, timeLimitMs, memoryLimitMb, problemCode = '', requireFreopen = false) {
     const memBytes = Math.min(memoryLimitMb * 1024 * 1024, DOCKER_MEMORY_BYTES);
     const codeName = problemCode ? problemCode.trim() : '';
 
@@ -433,14 +702,15 @@ class JudgeEngine {
       };
     }
 
-    if (onProgress) onProgress({ status: 'COMPILING', message: 'Đang biên dịch C++ bằng Docker (g++ -O2 -std=c++17)...' });
-
-    // Fail closed: Docker required
     const info = this._getCompilerInfo();
-    if (!info.hasDocker || !info.imageAvailable) {
-      const reason = !info.hasDocker
-        ? 'Docker không khả dụng trên hệ thống này. Vui lòng cài đặt Docker để chấm bài.'
-        : `Docker image "${DOCKER_IMAGE}" chưa được pull. Chạy: docker pull ${DOCKER_IMAGE}`;
+    const modeLabel = info.mode === 'docker'
+      ? 'Docker Sandbox'
+      : `Trình biên dịch Native (${path.basename(info.nativeGppPath || 'g++')})`;
+    if (onProgress) onProgress({ status: 'COMPILING', message: `Đang biên dịch C++ bằng ${modeLabel}...` });
+
+    // Fail closed: either Docker or native g++ is required
+    if (info.mode === 'none') {
+      const reason = 'Không tìm thấy trình biên dịch C++ (Docker hoặc MinGW/G++). Vui lòng cài đặt g++ hoặc bật Docker để chấm bài.';
       return {
         status: 'INFRASTRUCTURE_ERROR',
         score: 0, passedTests: 0, totalTests: testCases.length,
@@ -601,10 +871,8 @@ class JudgeEngine {
 
   async runCustomInput(code, customInput, timeLimit = 2000, memoryLimit = 256, problemCode = '') {
     const info = this._getCompilerInfo();
-    if (!info.hasDocker || !info.imageAvailable) {
-      const reason = !info.hasDocker
-        ? 'Docker không khả dụng. Cần cài Docker để chạy thử.'
-        : `Docker image "${DOCKER_IMAGE}" chưa được pull.`;
+    if (info.mode === 'none') {
+      const reason = 'Không tìm thấy trình biên dịch C++ (Docker hoặc MinGW/G++).';
       return { status: 'INFRASTRUCTURE_ERROR', time: 0, memory: 0, stdout: '', stderr: reason };
     }
 

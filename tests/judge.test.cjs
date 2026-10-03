@@ -33,10 +33,12 @@ function submission(code, overrides = {}) {
 // ---------------------------------------------------------------------------
 
 let dockerAvailable = false;
+let compilerAvailable = false;
 
 before(() => {
   const info = judge.getDiagnostics();
   dockerAvailable = !!(info.hasDocker && info.imageAvailable);
+  compilerAvailable = dockerAvailable || !!info.hasNativeGpp;
 });
 
 // ---------------------------------------------------------------------------
@@ -67,8 +69,8 @@ test('gradeSubmission with zero testcases returns AC with score 0 regardless of 
 // ---------------------------------------------------------------------------
 
 test('gradeSubmission fails closed with INFRASTRUCTURE_ERROR when Docker is unavailable and testcases exist', async function () {
-  if (dockerAvailable) {
-    // Skip: Docker IS available; the fail-closed path won't trigger.
+  if (compilerAvailable) {
+    // Skip: A compiler IS available; the fail-closed path won't trigger.
     return;
   }
   const prob = problem({
@@ -88,7 +90,7 @@ test('gradeSubmission fails closed with INFRASTRUCTURE_ERROR when Docker is unav
 // ---------------------------------------------------------------------------
 
 test('Docker: compiles and runs a correct C++ sum program — returns AC', async function () {
-  if (!dockerAvailable) return;
+  if (!compilerAvailable) return;
 
   const prob = problem({
     testCases: [
@@ -103,7 +105,7 @@ test('Docker: compiles and runs a correct C++ sum program — returns AC', async
 });
 
 test('Docker: wrong answer returns WA with zero score', async function () {
-  if (!dockerAvailable) return;
+  if (!compilerAvailable) return;
 
   const prob = problem({
     testCases: [
@@ -117,7 +119,7 @@ test('Docker: wrong answer returns WA with zero score', async function () {
 });
 
 test('Docker: compile error returns CE with error message', async function () {
-  if (!dockerAvailable) return;
+  if (!compilerAvailable) return;
 
   const prob = problem({
     testCases: [{ id: 'tc1', input: '1', expectedOutput: '1', isSample: true, score: 100 }]
@@ -129,7 +131,7 @@ test('Docker: compile error returns CE with error message', async function () {
 });
 
 test('Docker: infinite loop returns TLE within time limit + margin', async function () {
-  if (!dockerAvailable) return;
+  if (!compilerAvailable) return;
 
   const timeLimitMs = 1000;
   const prob = problem({
@@ -146,7 +148,7 @@ test('Docker: infinite loop returns TLE within time limit + margin', async funct
 });
 
 test('Docker: runtime error (segfault/exit nonzero) returns RE', async function () {
-  if (!dockerAvailable) return;
+  if (!compilerAvailable) return;
 
   const prob = problem({
     testCases: [{ id: 'tc1', input: '', expectedOutput: '', isSample: false, score: 100 }]
@@ -158,7 +160,7 @@ test('Docker: runtime error (segfault/exit nonzero) returns RE', async function 
 });
 
 test('Docker: hidden testcase input/output not exposed in student details', async function () {
-  if (!dockerAvailable) return;
+  if (!compilerAvailable) return;
 
   const prob = problem({
     testCases: [
@@ -181,7 +183,7 @@ test('Docker: getDiagnostics reports hasDocker true when Docker is available', f
 });
 
 test('Docker: runCustomInput with correct program returns OK and stdout', async function () {
-  if (!dockerAvailable) return;
+  if (!compilerAvailable) return;
 
   const result = await judge.runCustomInput(
     '#include<iostream>\nusing namespace std;\nint main(){int a,b;cin>>a>>b;cout<<a+b;}',
@@ -193,7 +195,7 @@ test('Docker: runCustomInput with correct program returns OK and stdout', async 
 });
 
 test('Docker: runCustomInput with compile error returns CE', async function () {
-  if (!dockerAvailable) return;
+  if (!compilerAvailable) return;
 
   const result = await judge.runCustomInput('bad code!', '', 2000, 128, '');
   assert.equal(result.status, 'CE');
