@@ -49,14 +49,14 @@ export const VerdictBadge: React.FC<Props> = ({ status, size = 'md', showLabel =
         };
       case 'JUDGING':
         return {
-          label: 'Đang chấm...',
+          label: 'Compiling...',
           className: 'badge-tle',
           icon: <RefreshCw size={size === 'sm' ? 12 : 16} className="animate-spin" />
         };
       case 'QUEUED':
       default:
         return {
-          label: 'Trong hàng đợi',
+          label: 'Pending',
           className: 'badge-ce',
           icon: <Clock size={size === 'sm' ? 12 : 16} />
         };

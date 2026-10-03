@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { apiFetch } from '../../lib/api';
 import { Submission, BatchGradeProgress, Contest, Problem } from '../../types';
+import { resolveProblemSubmission } from '../../lib/scoring';
 import { useNetwork } from '../../context/NetworkContext';
 import { VerdictBadge } from '../../components/VerdictBadge';
 import { DiffViewer } from '../../components/DiffViewer';
@@ -74,6 +75,8 @@ interface StudentRow {
     points: number;
     bestSubmission: Submission | null;
     latestSubmission: Submission | null;
+    finalSubmission: Submission | null;
+    finalScore: number;
     submissionCount: number;
     isJudging: boolean;
     judgingProgress?: LiveProgress | null;
@@ -453,16 +456,20 @@ export const LiveMonitor: React.FC = () => {
       let submittedCount = 0;
       let currentJudgingProblem: string | undefined = undefined;
 
+      const scoringMode = activeContest?.scoringMode || 'LIVE_BEST';
+
       const problemRows = targetProbs.map(prob => {
         const probSubs = studentSubs.filter(s => s.problemId === prob.id || s.problemCode?.toUpperCase() === prob.code.toUpperCase());
+        const problemResult = resolveProblemSubmission(probSubs, scoringMode);
+        const finalSub = problemResult.finalSubmission;
         const bestSub = probSubs.reduce((best, cur) => ((cur.score || 0) > (best?.score || 0) ? cur : best), null as Submission | null);
         const latestSub = probSubs.length > 0 ? probSubs[0] : null;
 
         if (probSubs.length > 0) submittedCount++;
-        if (bestSub && (bestSub.status === 'AC' || (bestSub.score || 0) >= (prob.points || 100))) {
+        if (finalSub && (finalSub.status === 'AC' || problemResult.finalScore >= (prob.points || 100))) {
           solvedCount++;
         }
-        totalEarnedScore += (bestSub?.score || 0);
+        totalEarnedScore += problemResult.finalScore;
 
         const isJudging = probSubs.some(s => s.status === 'JUDGING' || s.status === 'QUEUED' || s.status === 'COMPILING');
         const judgingSub = probSubs.find(s => s.status === 'JUDGING' || s.status === 'QUEUED' || s.status === 'COMPILING');
@@ -479,6 +486,8 @@ export const LiveMonitor: React.FC = () => {
           points: prob.points || 100,
           bestSubmission: bestSub,
           latestSubmission: latestSub,
+          finalSubmission: finalSub,
+          finalScore: problemResult.finalScore,
           submissionCount: probSubs.length,
           isJudging,
           judgingProgress
@@ -655,7 +664,7 @@ export const LiveMonitor: React.FC = () => {
               <option value="all">── Tất cả kỳ thi & phòng thi ──</option>
               {contests.map(c => (
                 <option key={c.id} value={c.id}>
-                  {c.title} ({c.mode === 'offline' ? 'Offline LAN' : 'Online'} • {c.status === 'running' ? 'Đang thi' : 'Đã kết thúc'})
+                  {c.title} ({c.mode === 'offline' ? 'Offline LAN' : 'Online'} • {c.status === 'running' ? 'Đang thi' : 'Ended'})
                 </option>
               ))}
             </select>
@@ -783,7 +792,7 @@ export const LiveMonitor: React.FC = () => {
               <option value="left">🚪 Đã rời màn hình</option>
               <option value="judging">🟡 Đang chấm</option>
               <option value="submitted">📤 Đã nộp bài</option>
-              <option value="completed">✓ Đã kết thúc</option>
+              <option value="completed">✓ Ended</option>
               <option value="warning">⚠ Có cảnh báo rời tab</option>
             </select>
           </div>
@@ -860,7 +869,7 @@ export const LiveMonitor: React.FC = () => {
               : student.status === 'COMPLETED' ? '#818cf8' : 'var(--text-muted)';
             const statusLabel = student.status === 'IN_PROGRESS' ? 'Đang thi'
               : student.status === 'LEFT' ? 'Đã rời màn hình'
-              : student.status === 'COMPLETED' ? 'Đã kết thúc' : 'Chưa bắt đầu';
+              : student.status === 'COMPLETED' ? 'Ended' : 'Chưa bắt đầu';
 
             return (
               <div 
@@ -1031,30 +1040,30 @@ export const LiveMonitor: React.FC = () => {
                                   <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
                                     <RefreshCw size={12} className="animate-spin" color="var(--accent-amber)" />
                                     <span style={{ fontSize: '0.76rem', color: 'var(--accent-amber)', fontWeight: 700 }}>
-                                      {liveProg ? `Đang chấm test ${liveProg.currentTest}/${liveProg.totalTests}` : 'Đang biên dịch / chấm bài...'}
+                                      {liveProg ? `Đang chấm test ${liveProg.currentTest}/${liveProg.totalTests}` : 'Compiling...'}
                                     </span>
                                   </div>
                                 )}
 
-                                {/* Best Verdict */}
-                                {bestSub ? (
-                                  <VerdictBadge status={bestSub.status} size="sm" />
+                                {/* Final Verdict according to scoringMode */}
+                                {prob.finalSubmission ? (
+                                  <VerdictBadge status={prob.finalSubmission.status} size="sm" />
                                 ) : (
-                                  <span style={{ fontSize: '0.76rem', color: 'var(--text-muted)' }}>Chưa nộp</span>
+                                  <span style={{ fontSize: '0.76rem', color: 'var(--text-muted)' }}>Not Submitted</span>
                                 )}
 
                                 {/* Score */}
                                 <div style={{ minWidth: '70px', textAlign: 'right', fontFamily: 'var(--font-mono)', fontSize: '0.84rem' }}>
-                                  <strong style={{ color: bestSub ? 'var(--accent-emerald)' : 'var(--text-muted)' }}>
-                                    {bestSub ? bestSub.score : 0}
+                                  <strong style={{ color: prob.finalSubmission ? 'var(--accent-emerald)' : 'var(--text-muted)' }}>
+                                    {prob.finalScore}
                                   </strong>
                                   <span style={{ color: 'var(--text-muted)', fontSize: '0.74rem' }}>/{prob.points}đ</span>
                                 </div>
 
-                                {/* Run Time & Memory */}
-                                {bestSub && (
+                                {/* Run Time & Memory of final submission */}
+                                {prob.finalSubmission && (
                                   <span style={{ fontSize: '0.74rem', color: 'var(--text-muted)', fontFamily: 'var(--font-mono)' }}>
-                                    {bestSub.executionTime || 0}ms • {bestSub.memoryUsed || 0}MB
+                                    {prob.finalSubmission.executionTime || 0}ms • {prob.finalSubmission.memoryUsed || 0}MB
                                   </span>
                                 )}
 

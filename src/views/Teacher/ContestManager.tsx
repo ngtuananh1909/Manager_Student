@@ -84,7 +84,8 @@ export const ContestManager: React.FC = () => {
       preventCopyPaste: true
     },
     memoryLimit: 256,
-    category: 'regular'
+    category: 'regular',
+    scoringMode: 'LIVE_BEST'
   });
 
   // Contest-Level PDF Attachment State
@@ -405,7 +406,8 @@ export const ContestManager: React.FC = () => {
         preventCopyPaste: true
       },
       memoryLimit: 256,
-      category: 'regular'
+      category: 'regular',
+      scoringMode: 'LIVE_BEST'
     });
     setPendingContestPdf(null);
     setRemoveContestPdf(false);
@@ -452,7 +454,8 @@ export const ContestManager: React.FC = () => {
       allowReopen: c.allowReopen ?? true,
       ipWhitelist: c.ipWhitelist || '',
       memoryLimit: c.memoryLimit || 256,
-      category: c.category || 'regular'
+      category: c.category || 'regular',
+      scoringMode: c.scoringMode || 'LIVE_BEST'
     });
     setPendingContestPdf(null);
     setRemoveContestPdf(false);
@@ -907,10 +910,10 @@ export const ContestManager: React.FC = () => {
       return;
     }
 
-    // Validate RAM Limit (Rules 58-60: 240 MB - 272 MB, default 256 MB)
+    // Validate RAM Limit (up to 5120 MB / 5 GB, default 256 MB)
     const memLimit = Number(formContest.memoryLimit) || 256;
-    if (memLimit < 240 || memLimit > 272) {
-      alert('❌ Giới hạn RAM của kỳ thi phải nằm trong khoảng từ 240 MB đến 272 MB (mặc định 256 MB)');
+    if (memLimit < 16 || memLimit > 5120) {
+      alert('❌ Giới hạn RAM của kỳ thi phải nằm trong khoảng từ 16 MB đến 5120 MB (5 GB)');
       return;
     }
 
@@ -1456,14 +1459,14 @@ export const ContestManager: React.FC = () => {
             className={`linear-tab-btn ${filterMode === 'upcoming' ? 'active' : ''}`}
             onClick={() => setFilterMode('upcoming')}
           >
-            Sắp tới
+            Upcoming
           </button>
           <button 
             type="button"
             className={`linear-tab-btn ${filterMode === 'ended' ? 'active' : ''}`}
             onClick={() => setFilterMode('ended')}
           >
-            Đã kết thúc
+            Ended
           </button>
           <button 
             type="button"
@@ -1537,10 +1540,10 @@ export const ContestManager: React.FC = () => {
                           <span className="live-indicator-dot" /> Đang Thi
                         </span>
                       )}
-                      {isUpcoming && <span className="badge badge-tle">Sắp Tới</span>}
+                      {isUpcoming && <span className="badge badge-tle">Upcoming</span>}
                       {isEnded && (
                         <span className="badge" style={{ background: 'rgba(99, 102, 241, 0.15)', color: '#a5b4fc', border: '1px solid rgba(129, 140, 248, 0.3)' }}>
-                          Đã Kết Thúc
+                          Ended
                         </span>
                       )}
                     </td>
@@ -1565,6 +1568,21 @@ export const ContestManager: React.FC = () => {
                             {c.description}
                           </div>
                         )}
+                        <div style={{ display: 'flex', gap: '5px', alignItems: 'center', marginTop: '4px', flexWrap: 'wrap' }}>
+                          {c.scoringMode === 'OLYMPIC_LATEST' ? (
+                            <span className="badge" style={{ background: 'rgba(168, 85, 247, 0.15)', color: '#c084fc', border: '1px solid rgba(168, 85, 247, 0.3)', fontSize: '0.7rem' }} title="Olympic: Lấy bài nộp gần nhất theo từng bài">
+                              🟣 Olympic
+                            </span>
+                          ) : c.scoringMode === 'PRETEST' ? (
+                            <span className="badge" style={{ background: 'rgba(234, 179, 8, 0.15)', color: '#facc15', border: '1px solid rgba(234, 179, 8, 0.3)', fontSize: '0.7rem' }} title="Pretest: Chấm thử, không tính điểm chính thức">
+                              🟡 Pretest
+                            </span>
+                          ) : (
+                            <span className="badge" style={{ background: 'rgba(59, 130, 246, 0.15)', color: '#60a5fa', border: '1px solid rgba(59, 130, 246, 0.3)', fontSize: '0.7rem' }} title="Vừa chấm vừa nộp: Lấy bài điểm cao nhất">
+                              🔵 Vừa chấm vừa nộp
+                            </span>
+                          )}
+                        </div>
                       </div>
                     </td>
                     <td>
@@ -3107,34 +3125,56 @@ export const ContestManager: React.FC = () => {
 
                   <div>
                     <label style={{ fontSize: '0.78rem', color: 'var(--text-secondary)', display: 'block', marginBottom: '4px' }}>
-                      Cấu hình RAM kỳ thi (240MB - 272MB):
+                      Cấu hình RAM kỳ thi (Tối đa 5120 MB / 5 GB):
                     </label>
-                    <select
-                      className="input-field"
-                      value={formContest.memoryLimit || 256}
-                      onChange={e => setFormContest({ ...formContest, memoryLimit: Number(e.target.value) })}
-                    >
-                      {[240, 244, 248, 252, 256, 260, 264, 268, 272].map(mb => (
-                        <option key={mb} value={mb}>
-                          {mb} MB {mb === 256 ? '(Mặc định chuẩn)' : ''}
-                        </option>
-                      ))}
-                    </select>
+                    <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                      <input
+                        type="number"
+                        min={16}
+                        max={5120}
+                        className="input-field"
+                        style={{ width: '110px', fontFamily: 'var(--font-mono)', fontSize: '0.82rem' }}
+                        value={formContest.memoryLimit || 256}
+                        onChange={e => setFormContest({ ...formContest, memoryLimit: Math.min(5120, Math.max(16, Number(e.target.value) || 256)) })}
+                      />
+                      <select
+                        className="input-field"
+                        style={{ flex: 1, fontSize: '0.82rem' }}
+                        value={[128, 256, 512, 1024, 2048, 3072, 4096, 5120].includes(Number(formContest.memoryLimit)) ? Number(formContest.memoryLimit) : 'custom'}
+                        onChange={e => {
+                          if (e.target.value !== 'custom') {
+                            setFormContest({ ...formContest, memoryLimit: Number(e.target.value) });
+                          }
+                        }}
+                      >
+                        <option value={128}>128 MB</option>
+                        <option value={256}>256 MB (Chuẩn mặc định)</option>
+                        <option value={512}>512 MB</option>
+                        <option value={1024}>1024 MB (1 GB)</option>
+                        <option value={2048}>2048 MB (2 GB)</option>
+                        <option value={3072}>3072 MB (3 GB)</option>
+                        <option value={4096}>4096 MB (4 GB)</option>
+                        <option value={5120}>5120 MB (5 GB)</option>
+                        {![128, 256, 512, 1024, 2048, 3072, 4096, 5120].includes(Number(formContest.memoryLimit)) && (
+                          <option value="custom">Tùy chỉnh ({formContest.memoryLimit} MB)</option>
+                        )}
+                      </select>
+                    </div>
                   </div>
                 </div>
 
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
                   <div>
                     <label style={{ fontSize: '0.78rem', color: 'var(--text-secondary)', display: 'block', marginBottom: '4px' }}>
-                      Hình thức công bố kết quả:
+                      Thời điểm công bố kết quả (Feedback):
                     </label>
                     <select
                       className="input-field"
                       value={formContest.gradingMode || 'direct'}
                       onChange={e => setFormContest({ ...formContest, gradingMode: e.target.value as any })}
                     >
-                      <option value="direct">Chấm trực tiếp (Học sinh xem điểm & Diff ngay)</option>
-                      <option value="batch_after_deadline">Chế độ Olympic (Chỉ nộp bài, chấm sau khi hết giờ)</option>
+                      <option value="direct">Biết điểm ngay (Thí sinh xem điểm & test case ngay khi nộp)</option>
+                      <option value="batch_after_deadline">Ẩn điểm khi đang thi (Chỉ chấm & công bố sau khi hết giờ)</option>
                     </select>
                   </div>
 
@@ -3164,7 +3204,7 @@ export const ContestManager: React.FC = () => {
                     />
                     <span>
                       <strong style={{ color: formContest.requireFreopen ? 'var(--accent-amber)' : 'var(--text-main)' }}>
-                        Yêu cầu thí sinh dùng tệp nhập/xuất (freopen)
+                        File I/O (freopen) - Bắt buộc dùng tệp nhập/xuất
                       </strong>
                       <div style={{ color: 'var(--text-muted)', fontSize: '0.74rem', marginTop: '2px' }}>
                         Bắt buộc mã nguồn thí sinh phải mở đúng tệp <code>&lt;TÊN_BÀI&gt;.inp</code> để đọc và <code>&lt;TÊN_BÀI&gt;.out</code> để ghi. Nếu không có freopen hoặc sai tên tệp sẽ báo lỗi không tìm thấy tệp kết quả (WA). Bỏ chọn nếu cho phép nhập xuất tự do qua bàn phím (cin/cout).
@@ -3221,6 +3261,73 @@ export const ContestManager: React.FC = () => {
                     </div>
                     <div style={{ fontSize: '0.74rem', color: 'var(--text-muted)', marginTop: '6px' }}>
                       Áp dụng cho cả thi trực tiếp và thi ảo: Khi thoát ra (bấm Quay lại, đóng màn hình, F5), nếu chọn "Có" thì học sinh có thể quay lại phòng thi làm tiếp trong thời gian cho phép.
+                    </div>
+                  </div>
+                </div>
+
+                {/* ⚙️ CẤU HÌNH CHẤM ĐIỂM (SCORING MODE) */}
+                <div style={{ borderTop: '1px solid var(--border-subtle)', paddingTop: '12px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                  <div style={{ fontSize: '0.84rem', fontWeight: 700, color: 'var(--accent-cyan)', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                    ⚙️ QUY TẮC CHỌN BÀI TÍNH ĐIỂM TỔNG KẾT (SCORING MODE)
+                  </div>
+                  <div style={{ fontSize: '0.74rem', color: 'var(--text-muted)' }}>
+                    Quy định <strong>lần nộp nào</strong> được hệ thống chọn để tính vào điểm cuối cùng của bài thi (khác với <em>Thời điểm công bố điểm</em> ở trên).
+                  </div>
+                  <div style={{ background: 'rgba(255,255,255,0.03)', padding: '12px 14px', borderRadius: '8px', border: '1px solid var(--border-subtle)' }}>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                      <label style={{ display: 'flex', alignItems: 'flex-start', gap: '8px', cursor: 'pointer' }}>
+                        <input
+                          type="radio"
+                          name="scoringMode"
+                          checked={(formContest.scoringMode || 'LIVE_BEST') === 'LIVE_BEST'}
+                          onChange={() => setFormContest({ ...formContest, scoringMode: 'LIVE_BEST' })}
+                          style={{ marginTop: '3px' }}
+                        />
+                        <div>
+                          <strong style={{ color: (formContest.scoringMode || 'LIVE_BEST') === 'LIVE_BEST' ? 'var(--accent-cyan)' : 'var(--text-main)', fontSize: '0.84rem' }}>
+                            🔵 Vừa chấm vừa nộp (LIVE_BEST)
+                          </strong>
+                          <div style={{ fontSize: '0.74rem', color: 'var(--text-muted)', marginTop: '2px' }}>
+                            Cho phép thí sinh nộp bài nhiều lần trong thời gian thi. Mỗi lần nộp được chấm và cập nhật điểm. Khi kỳ thi kết thúc, hệ thống lấy bài có điểm cao nhất làm kết quả cuối cùng (nếu bằng điểm, ưu tiên nộp sớm hơn).
+                          </div>
+                        </div>
+                      </label>
+
+                      <label style={{ display: 'flex', alignItems: 'flex-start', gap: '8px', cursor: 'pointer' }}>
+                        <input
+                          type="radio"
+                          name="scoringMode"
+                          checked={formContest.scoringMode === 'OLYMPIC_LATEST'}
+                          onChange={() => setFormContest({ ...formContest, scoringMode: 'OLYMPIC_LATEST' })}
+                          style={{ marginTop: '3px' }}
+                        />
+                        <div>
+                          <strong style={{ color: formContest.scoringMode === 'OLYMPIC_LATEST' ? 'var(--accent-purple)' : 'var(--text-main)', fontSize: '0.84rem' }}>
+                            🟣 Olympic (OLYMPIC_LATEST)
+                          </strong>
+                          <div style={{ fontSize: '0.74rem', color: 'var(--text-muted)', marginTop: '2px' }}>
+                            Thí sinh có thể nộp bài nhiều lần. Hệ thống chấm từng lần nộp, nhưng kết quả cuối cùng của mỗi bài là kết quả của lần nộp gần nhất (không tự động lấy bài điểm cao nhất).
+                          </div>
+                        </div>
+                      </label>
+
+                      <label style={{ display: 'flex', alignItems: 'flex-start', gap: '8px', cursor: 'pointer' }}>
+                        <input
+                          type="radio"
+                          name="scoringMode"
+                          checked={formContest.scoringMode === 'PRETEST'}
+                          onChange={() => setFormContest({ ...formContest, scoringMode: 'PRETEST' })}
+                          style={{ marginTop: '3px' }}
+                        />
+                        <div>
+                          <strong style={{ color: formContest.scoringMode === 'PRETEST' ? 'var(--accent-amber)' : 'var(--text-main)', fontSize: '0.84rem' }}>
+                            🟡 Pretest (PRETEST)
+                          </strong>
+                          <div style={{ fontSize: '0.74rem', color: 'var(--text-muted)', marginTop: '2px' }}>
+                            Bài kiểm tra thử trước kỳ thi chính. Thí sinh có thể nộp và được chấm để kiểm tra chương trình. Kết quả Pretest được lưu riêng và không tính vào điểm/bảng xếp hạng chính thức của kỳ thi.
+                          </div>
+                        </div>
+                      </label>
                     </div>
                   </div>
                 </div>

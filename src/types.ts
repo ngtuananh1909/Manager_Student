@@ -139,6 +139,8 @@ export interface VirtualSession {
 
 export type ScopeType = 'ALL' | 'GRADE' | 'CLASS' | 'STUDENT';
 
+export type ScoringMode = 'LIVE_BEST' | 'OLYMPIC_LATEST' | 'PRETEST';
+
 export type ExamCategory = 
   | 'regular'     // Kiểm tra thường xuyên / 15 phút
   | 'midterm'     // Giữa kỳ
@@ -153,13 +155,14 @@ export interface Contest {
   title: string;
   description: string;
   mode: 'offline' | 'online'; // 'offline' = Mạng LAN phòng máy (Không cần Internet); 'online' = Trực tuyến qua Internet
+  scoringMode?: ScoringMode;  // 'LIVE_BEST' (Vừa chấm vừa nộp) | 'OLYMPIC_LATEST' (Olympic) | 'PRETEST' (Chấm thử)
   category?: ExamCategory | string; // Phân loại kỳ thi
   scopeType?: ScopeType;      // 'ALL' (Toàn trường) | 'GRADE' (Theo khối) | 'CLASS' (Theo lớp) | 'STUDENT' (Chỉ định học sinh)
   targetGrades?: number[];    // Danh sách khối áp dụng (vd: [6, 7])
   targetClasses?: string[];   // Danh sách ID/Tên lớp áp dụng
   targetStudents?: string[];  // Danh sách ID học sinh áp dụng
   totalScore?: number;        // Tổng điểm kỳ thi (mặc định 100, có thể cấu hình 10, 50...)
-  memoryLimit?: number;       // Giới hạn RAM (MB), mặc định 256MB, hợp lệ từ 240MB -> 272MB
+  memoryLimit?: number;       // Giới hạn RAM (MB), mặc định 256MB, hỗ trợ tới 5120MB (5GB)
   classIds: string[];         // Lớp được tham gia ([] = tất cả, giữ đồng bộ với targetClasses)
   problemIds: string[];       // Danh sách ID/Code bài tập trong đề thi
   startTime: string;          // ISO string

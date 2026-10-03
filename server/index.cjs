@@ -1468,10 +1468,10 @@ app.post('/api/contests', requireHost, (req, res) => {
     }
     let contestData = { ...req.body };
 
-    // Rule 58-60: RAM configuration must be between 240 MB and 272 MB, default 256 MB
+    // RAM configuration: up to 5120 MB (5 GB), default 256 MB
     let memoryLimit = contestData.memoryLimit !== undefined ? Number(contestData.memoryLimit) : 256;
-    if (isNaN(memoryLimit) || memoryLimit < 240 || memoryLimit > 272) {
-      return res.status(400).json({ error: 'Cấu hình RAM kỳ thi phải nằm trong khoảng 240 MB đến 272 MB (mặc định 256 MB)' });
+    if (isNaN(memoryLimit) || memoryLimit < 16 || memoryLimit > 5120) {
+      return res.status(400).json({ error: 'Cấu hình RAM kỳ thi phải nằm trong khoảng từ 16 MB đến 5120 MB (5 GB)' });
     }
     contestData.memoryLimit = memoryLimit;
 
@@ -1504,11 +1504,11 @@ app.put('/api/contests/:id', requireHost, (req, res) => {
     const { problemConfigs } = req.body;
     let updateData = { ...req.body };
 
-    // Rule 58-60: Validate RAM if provided
+    // Validate RAM if provided (up to 5120 MB / 5 GB)
     if (updateData.memoryLimit !== undefined) {
       const memoryLimit = Number(updateData.memoryLimit);
-      if (isNaN(memoryLimit) || memoryLimit < 240 || memoryLimit > 272) {
-        return res.status(400).json({ error: 'Cấu hình RAM kỳ thi phải nằm trong khoảng 240 MB đến 272 MB (mặc định 256 MB)' });
+      if (isNaN(memoryLimit) || memoryLimit < 16 || memoryLimit > 5120) {
+        return res.status(400).json({ error: 'Cấu hình RAM kỳ thi phải nằm trong khoảng từ 16 MB đến 5120 MB (5 GB)' });
       }
       updateData.memoryLimit = memoryLimit;
     }

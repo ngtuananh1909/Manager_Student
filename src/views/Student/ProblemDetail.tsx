@@ -3,6 +3,7 @@ import { apiFetch } from '../../lib/api';
 import Editor from '@monaco-editor/react';
 import confetti from 'canvas-confetti';
 import { Problem, Submission, Verdict, Contest } from '../../types';
+import { registerCppSuggestions } from '../../lib/monacoCppSuggestions';
 import { useAuth } from '../../context/AuthContext';
 import { useNetwork } from '../../context/NetworkContext';
 import { VerdictBadge } from '../../components/VerdictBadge';
@@ -48,6 +49,7 @@ interface Props {
   isVirtualSession?: boolean;
   onFinishVirtualSession?: () => void;
   antiCheatWarning?: string | null;
+  scoringMode?: 'LIVE_BEST' | 'OLYMPIC_LATEST' | 'PRETEST';
 }
 
 export const ProblemDetail: React.FC<Props> = ({ 
@@ -63,7 +65,8 @@ export const ProblemDetail: React.FC<Props> = ({
   contestDocFileName,
   isVirtualSession = false,
   onFinishVirtualSession,
-  antiCheatWarning = null
+  antiCheatWarning = null,
+  scoringMode = 'LIVE_BEST'
 }) => {
   const { user } = useAuth();
   const { serverUrl, socket, isConnected } = useNetwork();
@@ -91,8 +94,11 @@ export const ProblemDetail: React.FC<Props> = ({
   const editorRef = useRef<any>(null);
   const editorContainerRef = useRef<HTMLDivElement | null>(null);
 
-  const handleEditorDidMount = (editor: any) => {
+  const handleEditorDidMount = (editor: any, monaco: any) => {
     editorRef.current = editor;
+    if (monaco) {
+      registerCppSuggestions(monaco);
+    }
   };
 
   // Immediate flush of draft code to localStorage (guarantees 0% draft loss on tab close, reload, or navigation)
@@ -202,6 +208,7 @@ export const ProblemDetail: React.FC<Props> = ({
   const docFileName = problem.pdfFileName || contestDocFileName;
 
   const [contestInfo, setContestInfo] = useState<Contest | null>(null);
+  const activeScoringMode = contestInfo?.scoringMode || scoringMode || 'LIVE_BEST';
 
   useEffect(() => {
     if (contestId && serverUrl) {
@@ -417,6 +424,53 @@ export const ProblemDetail: React.FC<Props> = ({
             </span>
           )}
 
+          {activeScoringMode === 'OLYMPIC_LATEST' ? (
+            <span style={{ 
+              fontSize: '0.72rem', 
+              padding: '2px 8px', 
+              borderRadius: '12px', 
+              background: 'rgba(168, 85, 247, 0.25)', 
+              color: '#d8b4fe', 
+              fontWeight: 700, 
+              border: '1px solid rgba(168, 85, 247, 0.4)', 
+              display: 'inline-flex', 
+              alignItems: 'center', 
+              gap: '4px' 
+            }} title="Olympic: Kết quả tính theo lần nộp gần nhất của bài">
+              🟣 OLYMPIC
+            </span>
+          ) : activeScoringMode === 'PRETEST' ? (
+            <span style={{ 
+              fontSize: '0.72rem', 
+              padding: '2px 8px', 
+              borderRadius: '12px', 
+              background: 'rgba(234, 179, 8, 0.25)', 
+              color: '#fde047', 
+              fontWeight: 700, 
+              border: '1px solid rgba(234, 179, 8, 0.4)', 
+              display: 'inline-flex', 
+              alignItems: 'center', 
+              gap: '4px' 
+            }} title="Pretest: Bài kiểm tra thử, không tính điểm chính thức">
+              🟡 PRETEST
+            </span>
+          ) : (
+            <span style={{ 
+              fontSize: '0.72rem', 
+              padding: '2px 8px', 
+              borderRadius: '12px', 
+              background: 'rgba(59, 130, 246, 0.25)', 
+              color: '#93c5fd', 
+              fontWeight: 700, 
+              border: '1px solid rgba(59, 130, 246, 0.4)', 
+              display: 'inline-flex', 
+              alignItems: 'center', 
+              gap: '4px' 
+            }} title="Vừa chấm vừa nộp: Kết quả tính theo bài có điểm cao nhất">
+              🔵 VỪA CHẤM VỪA NỘP
+            </span>
+          )}
+
           {isVirtualSession && (
             <span style={{ 
               fontSize: '0.72rem', 
@@ -430,7 +484,7 @@ export const ProblemDetail: React.FC<Props> = ({
               alignItems: 'center', 
               gap: '4px' 
             }}>
-              <Sparkles size={11} /> THI ẢO
+              <Sparkles size={11} /> VIRTUAL CONTEST
             </span>
           )}
 
@@ -506,7 +560,7 @@ export const ProblemDetail: React.FC<Props> = ({
               className="btn btn-danger btn-sm"
               style={{ fontSize: '0.74rem', padding: '3px 10px', display: 'inline-flex', alignItems: 'center', gap: '4px', fontWeight: 700 }}
               onClick={onFinishVirtualSession}
-              title="Kết thúc kỳ thi ảo"
+              title="Kết thúc Virtual Contest"
             >
               <LogOut size={12} /> KẾT THÚC THI
             </button>
@@ -564,10 +618,23 @@ export const ProblemDetail: React.FC<Props> = ({
                 padding: '4px 9px', 
                 borderRadius: '6px', 
                 border: '1px solid var(--border-subtle)',
+                color: activeScoringMode === 'OLYMPIC_LATEST' ? '#d8b4fe' : activeScoringMode === 'PRETEST' ? '#fde047' : '#93c5fd'
+              }}>
+                <span>Chế độ chấm: <strong>{activeScoringMode === 'OLYMPIC_LATEST' ? 'Olympic (Lấy nộp gần nhất)' : activeScoringMode === 'PRETEST' ? 'Pretest (Chấm thử, không tính điểm)' : 'Vừa chấm vừa nộp (Lấy điểm cao nhất)'}</strong></span>
+              </div>
+              <div style={{ 
+                display: 'inline-flex', 
+                alignItems: 'center', 
+                gap: '5px', 
+                fontSize: '0.78rem', 
+                background: 'var(--bg-surface)', 
+                padding: '4px 9px', 
+                borderRadius: '6px', 
+                border: '1px solid var(--border-subtle)',
                 color: 'var(--text-secondary)'
               }}>
                 <Clock size={13} style={{ color: 'var(--accent-amber)' }} />
-                <span>Giới hạn thời gian: <strong style={{ color: 'var(--text-main)', fontFamily: 'var(--font-mono)' }}>{(problem.timeLimit || 1000) >= 1000 ? `${(problem.timeLimit || 1000) / 1000}s` : `${problem.timeLimit || 1000}ms`}</strong></span>
+                <span>Time Limit: <strong style={{ color: 'var(--text-main)', fontFamily: 'var(--font-mono)' }}>{(problem.timeLimit || 1000) >= 1000 ? `${(problem.timeLimit || 1000) / 1000}s` : `${problem.timeLimit || 1000}ms`}</strong></span>
               </div>
 
               <div style={{ 
@@ -582,7 +649,7 @@ export const ProblemDetail: React.FC<Props> = ({
                 color: 'var(--text-secondary)'
               }}>
                 <Cpu size={13} style={{ color: 'var(--accent-cyan)' }} />
-                <span>Giới hạn RAM: <strong style={{ color: 'var(--text-main)', fontFamily: 'var(--font-mono)' }}>{problem.memoryLimit || 256} MB</strong></span>
+                <span>Memory Limit: <strong style={{ color: 'var(--text-main)', fontFamily: 'var(--font-mono)' }}>{problem.memoryLimit || 256} MB</strong></span>
               </div>
 
               <div style={{ 
@@ -612,7 +679,7 @@ export const ProblemDetail: React.FC<Props> = ({
                 color: 'var(--text-secondary)'
               }}>
                 <Shield size={13} style={{ color: 'var(--accent-emerald)' }} />
-                <span>Test chấm: <strong style={{ color: 'var(--text-main)' }}>{problem.testCount || 0} Test (Bí mật)</strong></span>
+                <span>Test chấm: <strong style={{ color: 'var(--text-main)' }}>{problem.testCount || 0} Test (Ẩn)</strong></span>
               </div>
 
               {/* IO Mode Badge */}
@@ -956,7 +1023,13 @@ export const ProblemDetail: React.FC<Props> = ({
                 lineNumbers: 'on',
                 roundedSelection: true,
                 automaticLayout: true,
-                tabSize: 4
+                tabSize: 4,
+                quickSuggestions: { other: true, comments: false, strings: true },
+                suggestOnTriggerCharacters: true,
+                wordBasedSuggestions: 'allDocuments',
+                tabCompletion: 'on',
+                snippetSuggestions: 'top',
+                acceptSuggestionOnEnter: 'on'
               }}
             />
           </div>
@@ -987,7 +1060,7 @@ export const ProblemDetail: React.FC<Props> = ({
                   className={`linear-tab-btn ${activeConsoleTab === 'custom' ? 'active' : ''}`}
                   onClick={() => setActiveConsoleTab('custom')}
                 >
-                  <Terminal size={12} /> Chạy Thử Input
+                  <Terminal size={12} /> Run Code
                 </button>
 
                 <button 
@@ -1055,7 +1128,7 @@ export const ProblemDetail: React.FC<Props> = ({
                     >
                       {isRunningCustom ? 'Đang chạy...' : (
                         <span style={{ display: 'inline-flex', alignItems: 'center', gap: '3px' }}>
-                          <Play size={10} fill="currentColor" /> Chạy lại
+                          <Play size={10} fill="currentColor" /> Run Code
                         </span>
                       )}
                     </button>
@@ -1073,7 +1146,7 @@ export const ProblemDetail: React.FC<Props> = ({
                     {isRunningCustom ? (
                       <div style={{ display: 'flex', alignItems: 'center', gap: '8px', color: 'var(--accent-cyan)', padding: '10px 0' }}>
                         <RefreshCw size={15} className="animate-spin" />
-                        <span>Đang biên dịch và thực thi chương trình...</span>
+                        <span>Compiling & executing...</span>
                       </div>
                     ) : customError ? (
                       <pre style={{ color: 'var(--accent-rose)', margin: 0, whiteSpace: 'pre-wrap', lineHeight: 1.5 }}>
@@ -1136,7 +1209,14 @@ export const ProblemDetail: React.FC<Props> = ({
                             Điểm: <span style={{ color: 'var(--accent-emerald)' }}>{currentSubmission.score}</span> / {problem.points || 100} điểm
                           </div>
                           <div style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', marginTop: '2px' }}>
-                            Đã vượt qua: <strong>{currentSubmission.passedTests}/{currentSubmission.totalTests}</strong> test case
+                            Passed: <strong>{currentSubmission.passedTests}/{currentSubmission.totalTests}</strong> Test
+                          </div>
+                          <div style={{ fontSize: '0.74rem', marginTop: '3px', fontWeight: 600, color: activeScoringMode === 'OLYMPIC_LATEST' ? '#c084fc' : activeScoringMode === 'PRETEST' ? '#facc15' : '#60a5fa' }}>
+                            {activeScoringMode === 'OLYMPIC_LATEST' 
+                              ? '⚠️ Chế độ Olympic: Kết quả bài thi sẽ lấy theo LẦN NỘP GẦN NHẤT.'
+                              : activeScoringMode === 'PRETEST'
+                              ? 'ℹ️ Chế độ Pretest: Kết quả chấm thử được lưu riêng, không tính vào điểm chính thức.'
+                              : '✓ Chế độ Vừa chấm vừa nộp: Kết quả bài thi sẽ lấy bài có ĐIỂM CAO NHẤT.'}
                           </div>
                         </div>
                       </div>
@@ -1147,7 +1227,7 @@ export const ProblemDetail: React.FC<Props> = ({
                           <span style={{ color: 'var(--accent-cyan)', fontWeight: 600 }}>{currentSubmission.executionTime || 0}ms</span>
                         </div>
                         <div>
-                          <span style={{ color: 'var(--text-muted)' }}>Bộ nhớ: </span>
+                          <span style={{ color: 'var(--text-muted)' }}>Memory Used: </span>
                           <span style={{ color: 'var(--primary-light)', fontWeight: 600 }}>{currentSubmission.memoryUsed || 0} KB</span>
                         </div>
                       </div>
@@ -1340,7 +1420,7 @@ export const ProblemDetail: React.FC<Props> = ({
         className="btn btn-secondary btn-sm"
         onClick={handleRunCustom}
         disabled={isRunningCustom || isSubmitting}
-        title="Chạy thử code với input bạn tự nhập (Ctrl + Enter)"
+        title="Run Code (Ctrl + Enter)"
         style={{
           padding: '6px 14px',
           fontWeight: 600,
@@ -1351,7 +1431,7 @@ export const ProblemDetail: React.FC<Props> = ({
         }}
       >
         {isRunningCustom ? <RefreshCw size={14} className="animate-spin" /> : <Play size={14} fill="currentColor" />}
-        {isRunningCustom ? 'Đang chạy...' : 'Chạy Thử'}
+        {isRunningCustom ? 'Đang chạy...' : 'Run Code'}
       </button>
 
       {/* Button: Nộp Bài */}
@@ -1360,7 +1440,7 @@ export const ProblemDetail: React.FC<Props> = ({
         className="btn btn-primary btn-sm"
         onClick={handleSubmitCode}
         disabled={isSubmitting || isRunningCustom}
-        title="Nộp bài chính thức lên máy chủ để chấm điểm"
+        title="Submit code"
         style={{
           padding: '6px 16px',
           fontWeight: 700,
@@ -1373,7 +1453,7 @@ export const ProblemDetail: React.FC<Props> = ({
         }}
       >
         {isSubmitting ? <RefreshCw size={14} className="animate-spin" /> : <Send size={14} />}
-        {isSubmitting ? 'Đang Chấm...' : 'Nộp Bài'}
+        {isSubmitting ? 'Đang Chấm...' : 'Submit'}
       </button>
     </div>
   </div>

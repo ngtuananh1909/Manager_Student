@@ -3,6 +3,7 @@ import { apiFetch } from '../../lib/api';
 import { User, ClassGroup, Contest, StudentAttendance, UserExamRecord, AttendanceStatus } from '../../types';
 import { useNetwork } from '../../context/NetworkContext';
 import { 
+  GraduationCap,
   Users, 
   UserCheck, 
   UserX, 
@@ -69,6 +70,9 @@ export const StudentManager: React.FC = () => {
   const [showBatchModal, setShowBatchModal] = useState(false);
   const [showCardsModal, setShowCardsModal] = useState(false);
   const [showPasswordResetModal, setShowPasswordResetModal] = useState<User | null>(null);
+  const [editingClassStudent, setEditingClassStudent] = useState<User | null>(null);
+  const [selectedClassesForStudent, setSelectedClassesForStudent] = useState<string[]>([]);
+  const [isSavingClasses, setIsSavingClasses] = useState(false);
   const [showPortfolioModal, setShowPortfolioModal] = useState<User | null>(null);
   const [studentHistory, setStudentHistory] = useState<UserExamRecord[]>([]);
   const [loadingHistory, setLoadingHistory] = useState(false);
@@ -389,6 +393,42 @@ export const StudentManager: React.FC = () => {
       }
     } catch (e: any) {
       alert('Lỗi: ' + e.message);
+    }
+  };
+
+  const handleOpenClassEdit = (student: User) => {
+    setEditingClassStudent(student);
+    const current = Array.isArray(student.classes) && student.classes.length > 0
+      ? student.classes
+      : (student.classId ? [student.classId] : []);
+    setSelectedClassesForStudent([...current]);
+  };
+
+  const handleSaveStudentClasses = async () => {
+    if (!editingClassStudent) return;
+    setIsSavingClasses(true);
+    try {
+      const res = await apiFetch(`${serverUrl}/api/users/${editingClassStudent.id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          classes: selectedClassesForStudent,
+          classId: selectedClassesForStudent[0] || ''
+        })
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        alert('Lỗi cập nhật lớp học: ' + (err.error || res.statusText));
+        return;
+      }
+      const updatedUser = await res.json();
+      setUsers(prev => prev.map(s => s.id === updatedUser.id ? { ...s, ...updatedUser } : s));
+      loadData();
+      setEditingClassStudent(null);
+    } catch (err: any) {
+      alert('Không thể kết nối máy chủ: ' + err.message);
+    } finally {
+      setIsSavingClasses(false);
     }
   };
 
@@ -777,6 +817,14 @@ export const StudentManager: React.FC = () => {
                         </td>
                         <td style={{ padding: '12px 16px', textAlign: 'right' }}>
                           <div style={{ display: 'inline-flex', gap: '6px' }}>
+                            <button
+                              className="btn btn-outline btn-sm"
+                              style={{ padding: '4px 8px', fontSize: '0.74rem', color: 'var(--accent-cyan)' }}
+                              onClick={() => handleOpenClassEdit(s)}
+                              title="Chỉnh sửa phân lớp học sinh"
+                            >
+                              <GraduationCap size={13} /> Sửa Lớp
+                            </button>
                             <button
                               className="btn btn-outline btn-sm"
                               style={{ padding: '4px 8px', fontSize: '0.74rem' }}
@@ -1762,6 +1810,66 @@ export const StudentManager: React.FC = () => {
       {/* ═══════════════════════════════════════════════════════════════════
           MODAL: RESET MẬT KHẨU
           ═══════════════════════════════════════════════════════════════════ */}
+      {/* ═══════════════════════════════════════════════════════════════════
+          MODAL: CHỈNH SỬA PHÂN LỚP HỌC SINH
+          ═══════════════════════════════════════════════════════════════════ */}
+      {editingClassStudent && (
+        <div className="modal-overlay" onClick={() => setEditingClassStudent(null)}>
+          <div className="glass-panel" style={{ width: '100%', maxWidth: '460px', padding: '24px' }} onClick={e => e.stopPropagation()}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '14px' }}>
+              <GraduationCap size={22} color="var(--accent-cyan)" />
+              <h3 style={{ fontSize: '1.15rem', fontWeight: 800, margin: 0 }}>Chỉnh Sửa Lớp Học</h3>
+            </div>
+
+            <div style={{ fontSize: '0.84rem', color: 'var(--text-secondary)', marginBottom: '14px' }}>
+              Học sinh: <strong style={{ color: 'var(--text-main)' }}>{editingClassStudent.fullName}</strong> (@{editingClassStudent.username})
+            </div>
+
+            <div style={{ marginBottom: '16px' }}>
+              <label style={{ fontSize: '0.78rem', color: 'var(--text-muted)', display: 'block', marginBottom: '6px', fontWeight: 700 }}>
+                DANH SÁCH LỚP / NHÓM HỌC TẬP (CÓ THỂ CHỌN NHIỀU LỚP):
+              </label>
+              <div style={{ maxHeight: '200px', overflowY: 'auto', border: '1px solid var(--border-subtle)', borderRadius: '6px', padding: '8px 12px', background: 'var(--bg-app)' }}>
+                {classes.length === 0 ? (
+                  <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)', padding: '10px 0' }}>
+                    Chưa có lớp học nào trong hệ thống.
+                  </div>
+                ) : (
+                  classes.map(clsItem => {
+                    const isChecked = selectedClassesForStudent.includes(clsItem.id);
+                    return (
+                      <label key={clsItem.id} style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '6px 0', cursor: 'pointer', fontSize: '0.82rem', borderBottom: '1px solid rgba(255,255,255,0.03)' }}>
+                        <input
+                          type="checkbox"
+                          checked={isChecked}
+                          onChange={e => {
+                            if (e.target.checked) {
+                              setSelectedClassesForStudent([...selectedClassesForStudent, clsItem.id]);
+                            } else {
+                              setSelectedClassesForStudent(selectedClassesForStudent.filter(x => x !== clsItem.id));
+                            }
+                          }}
+                        />
+                        <span style={{ fontWeight: isChecked ? 600 : 400, color: isChecked ? 'var(--accent-cyan)' : 'var(--text-main)' }}>
+                          {clsItem.name} {clsItem.grade ? `(Khối ${clsItem.grade})` : ''}
+                        </span>
+                      </label>
+                    );
+                  })
+                )}
+              </div>
+            </div>
+
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '8px' }}>
+              <button type="button" className="btn btn-outline btn-sm" onClick={() => setEditingClassStudent(null)}>Hủy</button>
+              <button type="button" className="btn btn-primary btn-sm" onClick={handleSaveStudentClasses} disabled={isSavingClasses}>
+                {isSavingClasses ? 'Đang lưu...' : 'Lưu Thay Đổi'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {showPasswordResetModal && (
         <div className="modal-overlay" onClick={() => setShowPasswordResetModal(null)}>
           <div className="glass-panel" style={{ width: '100%', maxWidth: '380px', padding: '24px' }} onClick={e => e.stopPropagation()}>

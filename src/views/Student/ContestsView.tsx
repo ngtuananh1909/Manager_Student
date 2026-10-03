@@ -406,6 +406,7 @@ export const ContestsView: React.FC = () => {
           isVirtualSession={!!activeVirtualSession}
           onFinishVirtualSession={handleFinishVirtualSession}
           antiCheatWarning={antiCheatWarning}
+          scoringMode={activeContest.scoringMode || 'LIVE_BEST'}
         />
 
         {/* Violation Modal */}
@@ -470,9 +471,22 @@ export const ContestsView: React.FC = () => {
             </button>
             <div className="arena-title-group">
               <h2 className="arena-contest-title">{activeContest.title}</h2>
+              {activeContest.scoringMode === 'OLYMPIC_LATEST' ? (
+                <span className="badge" style={{ background: 'rgba(168, 85, 247, 0.2)', color: '#d8b4fe', border: '1px solid rgba(168, 85, 247, 0.4)' }} title="Olympic: Lấy bài nộp gần nhất theo từng bài">
+                  🟣 OLYMPIC
+                </span>
+              ) : activeContest.scoringMode === 'PRETEST' ? (
+                <span className="badge" style={{ background: 'rgba(234, 179, 8, 0.2)', color: '#fde047', border: '1px solid rgba(234, 179, 8, 0.4)' }} title="Pretest: Bài kiểm tra thử, không tính điểm chính thức">
+                  🟡 PRETEST
+                </span>
+              ) : (
+                <span className="badge" style={{ background: 'rgba(59, 130, 246, 0.2)', color: '#93c5fd', border: '1px solid rgba(59, 130, 246, 0.4)' }} title="Vừa chấm vừa nộp: Lấy bài điểm cao nhất">
+                  🔵 VỪA CHẤM VỪA NỘP
+                </span>
+              )}
               {activeVirtualSession ? (
                 <span className="badge" style={{ background: 'rgba(99, 102, 241, 0.2)', color: '#c7d2fe', border: '1px solid rgba(129, 140, 248, 0.4)' }}>
-                  <Sparkles size={11} /> THI ẢO
+                  <Sparkles size={11} /> VIRTUAL CONTEST
                 </span>
               ) : isOffline ? (
                 <span className="badge badge-ac"><Wifi size={11} /> OFFLINE LAN</span>
@@ -497,9 +511,9 @@ export const ContestsView: React.FC = () => {
                 type="button"
                 className="btn btn-outline btn-sm"
                 onClick={() => setViewingContestPdf(true)}
-                title="Xem toàn bộ đề thi tổng hợp dạng PDF"
+                title="Xem Problem"
               >
-                <FileText size={13} style={{ color: 'var(--accent-rose)' }} /> Đề PDF
+                <FileText size={13} style={{ color: 'var(--accent-rose)' }} /> Problem
               </button>
             )}
 
@@ -561,7 +575,7 @@ export const ContestsView: React.FC = () => {
                       <div className="table-problem-title">
                         <span>{prob.title}</span>
                         {prob.pdfUrl && (
-                          <span className="pdf-tag"><FileText size={10} /> PDF</span>
+                          <span className="pdf-tag"><FileText size={10} /> Problem</span>
                         )}
                         {(prob.ioMode === 'freopen' || activeContest.requireFreopen) ? (
                           <span className="badge" style={{ background: 'rgba(245, 158, 11, 0.15)', color: '#f59e0b', fontSize: '0.68rem', fontWeight: 700, border: '1px solid rgba(245, 158, 11, 0.3)' }}>
@@ -589,7 +603,7 @@ export const ContestsView: React.FC = () => {
                           </span>
                         </div>
                       ) : (
-                        <span style={{ color: 'var(--text-muted)', fontSize: '0.78rem' }}>Chưa nộp</span>
+                        <span style={{ color: 'var(--text-muted)', fontSize: '0.78rem' }}>Not Submitted</span>
                       )}
                     </td>
                     <td style={{ textAlign: 'right' }}>
@@ -702,7 +716,7 @@ export const ContestsView: React.FC = () => {
               className={`linear-tab-btn ${filterTab === 'ended' ? 'active' : ''}`}
               onClick={() => setFilterTab('ended')}
             >
-              <Sparkles size={11} /> Thi Ảo ({contests.filter(c => c.status === 'ended').length})
+              <Sparkles size={11} /> Virtual Contest ({contests.filter(c => c.status === 'ended').length})
             </button>
           </div>
 
@@ -784,10 +798,10 @@ export const ContestsView: React.FC = () => {
                           <span className="live-indicator-dot" /> Đang Thi
                         </span>
                       )}
-                      {isUpcoming && <span className="badge badge-tle">Sắp Mở</span>}
+                      {isUpcoming && <span className="badge badge-tle">Upcoming</span>}
                       {isEnded && (
                         <span className="badge" style={{ background: 'rgba(99, 102, 241, 0.15)', color: '#a5b4fc', border: '1px solid rgba(129, 140, 248, 0.3)' }}>
-                          Đã Kết Thúc
+                          Ended
                         </span>
                       )}
                     </td>
@@ -799,6 +813,21 @@ export const ContestsView: React.FC = () => {
                             {c.description}
                           </div>
                         )}
+                        <div style={{ display: 'flex', gap: '5px', alignItems: 'center', marginTop: '4px', flexWrap: 'wrap' }}>
+                          {c.scoringMode === 'OLYMPIC_LATEST' ? (
+                            <span className="badge" style={{ background: 'rgba(168, 85, 247, 0.15)', color: '#c084fc', border: '1px solid rgba(168, 85, 247, 0.3)', fontSize: '0.7rem' }} title="Olympic: Lấy bài nộp gần nhất theo từng bài">
+                              🟣 Olympic
+                            </span>
+                          ) : c.scoringMode === 'PRETEST' ? (
+                            <span className="badge" style={{ background: 'rgba(234, 179, 8, 0.15)', color: '#facc15', border: '1px solid rgba(234, 179, 8, 0.3)', fontSize: '0.7rem' }} title="Pretest: Chấm thử, không tính điểm chính thức">
+                              🟡 Pretest
+                            </span>
+                          ) : (
+                            <span className="badge" style={{ background: 'rgba(59, 130, 246, 0.15)', color: '#60a5fa', border: '1px solid rgba(59, 130, 246, 0.3)', fontSize: '0.7rem' }} title="Vừa chấm vừa nộp: Lấy bài điểm cao nhất">
+                              🔵 Vừa chấm vừa nộp
+                            </span>
+                          )}
+                        </div>
                       </div>
                     </td>
                     <td>
@@ -897,7 +926,7 @@ export const ContestsView: React.FC = () => {
                                   onClick={(e) => { e.stopPropagation(); setVirtualModalContest(c); }}
                                   title="Mô phỏng thi lại như lúc thi thật với đồng hồ đếm ngược"
                                 >
-                                  <RotateCcw size={12} /> Thi Ảo
+                                  <RotateCcw size={12} /> Virtual Contest
                                 </button>
                               );
                             })()}

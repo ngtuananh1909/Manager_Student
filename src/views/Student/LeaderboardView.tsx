@@ -234,8 +234,8 @@ export const LeaderboardView: React.FC = () => {
             >
               <option value="all">Tất cả trạng thái</option>
               <option value="running">🟢 Đang diễn ra</option>
-              <option value="upcoming">🟡 Sắp diễn ra</option>
-              <option value="ended">⚪ Đã kết thúc</option>
+              <option value="upcoming">🟡 Upcoming</option>
+              <option value="ended">⚪ Ended</option>
             </select>
           </div>
 
@@ -267,8 +267,8 @@ export const LeaderboardView: React.FC = () => {
               const statusBadge = status === 'running' 
                 ? { label: 'Đang diễn ra', bg: 'rgba(16, 185, 129, 0.15)', color: 'var(--accent-emerald)', border: 'rgba(16, 185, 129, 0.3)' }
                 : status === 'upcoming'
-                ? { label: 'Sắp diễn ra', bg: 'rgba(245, 158, 11, 0.15)', color: 'var(--accent-amber)', border: 'rgba(245, 158, 11, 0.3)' }
-                : { label: 'Đã kết thúc', bg: 'rgba(148, 163, 184, 0.15)', color: 'var(--text-muted)', border: 'rgba(148, 163, 184, 0.3)' };
+                ? { label: 'Upcoming', bg: 'rgba(245, 158, 11, 0.15)', color: 'var(--accent-amber)', border: 'rgba(245, 158, 11, 0.3)' }
+                : { label: 'Ended', bg: 'rgba(148, 163, 184, 0.15)', color: 'var(--text-muted)', border: 'rgba(148, 163, 184, 0.3)' };
 
               return (
                 <div
@@ -444,7 +444,7 @@ export const LeaderboardView: React.FC = () => {
                 {getCategoryLabel(selectedContest.category)}
               </span>
               <span className={`badge ${status === 'running' ? 'badge-primary' : 'badge-outline'}`} style={{ fontSize: '0.74rem' }}>
-                {status === 'running' ? '🟢 Đang diễn ra' : status === 'upcoming' ? '🟡 Sắp diễn ra' : '⚪ Đã kết thúc'}
+                {status === 'running' ? '🟢 Đang diễn ra' : status === 'upcoming' ? '🟡 Upcoming' : '⚪ Ended'}
               </span>
             </div>
             {selectedContest.description && (

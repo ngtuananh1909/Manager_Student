@@ -76,7 +76,7 @@ export const SubmissionsHistory: React.FC = () => {
                 <th style={{ padding: '14px 18px' }}>ĐIỂM</th>
                 <th style={{ padding: '14px 18px' }}>TEST PASS</th>
                 <th style={{ padding: '14px 18px' }}>THỜI GIAN</th>
-                <th style={{ padding: '14px 18px' }}>BỘ NHỚ</th>
+                <th style={{ padding: '14px 18px' }}>MEMORY USED</th>
                 <th style={{ padding: '14px 18px' }}>THỜI ĐIỂM NỘP</th>
                 <th style={{ padding: '14px 18px', textAlign: 'right' }}>THAO TÁC</th>
               </tr>
