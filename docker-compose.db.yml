@@ -1,20 +1,20 @@
 services:
   postgres:
     image: postgres:16-alpine
-    container_name: schooljudge_db
+    container_name: chaucaojudge_db
     restart: unless-stopped
     environment:
-      POSTGRES_DB: ${PG_DATABASE:-schooljudge}
-      POSTGRES_USER: ${PG_USER:-sj_admin}
-      POSTGRES_PASSWORD: ${PG_PASSWORD:-sj_secret_local_lan_2026}
+      POSTGRES_DB: ${PG_DATABASE:-chaucaojudge}
+      POSTGRES_USER: ${PG_USER:-chaucaojudge_admin}
+      POSTGRES_PASSWORD: ${PG_PASSWORD:-chaucaojudge_secret_2026}
     ports:
       # Bind only to 127.0.0.1 for host-only security
       - "127.0.0.1:${PG_PORT:-5432}:5432"
     volumes:
-      - sj_postgres_data:/var/lib/postgresql/data
+      - chaucaojudge_postgres_data:/var/lib/postgresql/data
       - ./server/database/schema.sql:/docker-entrypoint-initdb.d/01_schema.sql:ro
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${PG_USER:-sj_admin} -d ${PG_DATABASE:-schooljudge}"]
+      test: ["CMD-SHELL", "pg_isready -U ${PG_USER:-chaucaojudge_admin} -d ${PG_DATABASE:-chaucaojudge}"]
       interval: 3s
       timeout: 3s
       retries: 10
@@ -22,16 +22,16 @@ services:
   # Container Web UI CSDL (pgweb) siêu nhẹ (~30MB RAM)
   db-viewer:
     image: sosedoff/pgweb:latest
-    container_name: schooljudge_pgweb
+    container_name: chaucaojudge_pgweb
     restart: unless-stopped
     ports:
       - "127.0.0.1:5000:8081"
     environment:
-      - PGWEB_DATABASE_URL=postgres://${PG_USER:-sj_admin}:${PG_PASSWORD:-sj_secret_local_lan_2026}@postgres:5432/${PG_DATABASE:-schooljudge}?sslmode=disable
+      - PGWEB_DATABASE_URL=postgres://${PG_USER:-chaucaojudge_admin}:${PG_PASSWORD:-chaucaojudge_secret_2026}@postgres:5432/${PG_DATABASE:-chaucaojudge}?sslmode=disable
     depends_on:
       postgres:
         condition: service_healthy
 
 volumes:
-  sj_postgres_data:
+  chaucaojudge_postgres_data:
     driver: local

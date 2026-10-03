@@ -5,9 +5,9 @@ const { Pool } = require('pg');
 const poolConfig = {
   host: process.env.PG_HOST || '127.0.0.1',
   port: parseInt(process.env.PG_PORT || '5432', 10),
-  database: process.env.PG_DATABASE || 'schooljudge',
-  user: process.env.PG_USER || 'sj_admin',
-  password: process.env.PG_PASSWORD || 'sj_secret_local_lan_2026',
+  database: process.env.PG_DATABASE || 'chaucaojudge',
+  user: process.env.PG_USER || 'chaucaojudge_admin',
+  password: process.env.PG_PASSWORD || 'chaucaojudge_secret_2026',
   max: 20, // Tối đa 20 kết nối trong pool
   idleTimeoutMillis: 30000,
   connectionTimeoutMillis: 3000,

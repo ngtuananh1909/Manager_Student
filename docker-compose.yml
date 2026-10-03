@@ -10,22 +10,22 @@ services:
   # 1. Cơ sở dữ liệu PostgreSQL 16
   postgres:
     image: postgres:16-alpine
-    container_name: schooljudge_db
+    container_name: chaucaojudge_db
     restart: unless-stopped
     environment:
-      POSTGRES_DB: ${PG_DATABASE:-schooljudge}
-      POSTGRES_USER: ${PG_USER:-sj_admin}
-      POSTGRES_PASSWORD: ${PG_PASSWORD:-sj_secret_local_lan_2026}
+      POSTGRES_DB: ${PG_DATABASE:-chaucaojudge}
+      POSTGRES_USER: ${PG_USER:-chaucaojudge_admin}
+      POSTGRES_PASSWORD: ${PG_PASSWORD:-chaucaojudge_secret_2026}
     ports:
       # Mở cổng 5432 để máy host hoặc các tool như DBeaver kết nối
       - "127.0.0.1:${PG_PORT:-5432}:5432"
     volumes:
       # Dữ liệu bền vững lưu trên volume Docker
-      - sj_postgres_data:/var/lib/postgresql/data
+      - chaucaojudge_postgres_data:/var/lib/postgresql/data
       # Tự động nạp schema 17 bảng ngay lần đầu khởi tạo container
       - ./server/database/schema.sql:/docker-entrypoint-initdb.d/01_schema.sql:ro
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${PG_USER:-sj_admin} -d ${PG_DATABASE:-schooljudge}"]
+      test: ["CMD-SHELL", "pg_isready -U ${PG_USER:-chaucaojudge_admin} -d ${PG_DATABASE:-chaucaojudge}"]
       interval: 3s
       timeout: 3s
       retries: 10
@@ -33,12 +33,12 @@ services:
   # 2. Giao diện Web UI quản lý CSDL trực quan (pgweb ~30MB RAM)
   db-viewer:
     image: sosedoff/pgweb:latest
-    container_name: schooljudge_pgweb
+    container_name: chaucaojudge_pgweb
     restart: unless-stopped
     ports:
       - "127.0.0.1:5000:8081"
     environment:
-      - PGWEB_DATABASE_URL=postgres://${PG_USER:-sj_admin}:${PG_PASSWORD:-sj_secret_local_lan_2026}@postgres:5432/${PG_DATABASE:-schooljudge}?sslmode=disable
+      - PGWEB_DATABASE_URL=postgres://${PG_USER:-chaucaojudge_admin}:${PG_PASSWORD:-chaucaojudge_secret_2026}@postgres:5432/${PG_DATABASE:-chaucaojudge}?sslmode=disable
     depends_on:
       postgres:
         condition: service_healthy
@@ -48,7 +48,7 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
-    container_name: schooljudge_app
+    container_name: chaucaojudge_app
     restart: unless-stopped
     ports:
       - "4000:4000"
@@ -58,9 +58,9 @@ services:
       - SCHOOLJUDGE_DB_MODE=postgres
       - PG_HOST=postgres
       - PG_PORT=5432
-      - PG_DATABASE=${PG_DATABASE:-schooljudge}
-      - PG_USER=${PG_USER:-sj_admin}
-      - PG_PASSWORD=${PG_PASSWORD:-sj_secret_local_lan_2026}
+      - PG_DATABASE=${PG_DATABASE:-chaucaojudge}
+      - PG_USER=${PG_USER:-chaucaojudge_admin}
+      - PG_PASSWORD=${PG_PASSWORD:-chaucaojudge_secret_2026}
       - APP_DOMAIN=chaucaojudge.xyz
       - APP_URL=https://chaucaojudge.xyz
     volumes:
@@ -73,7 +73,7 @@ services:
   # 4. Caddy Reverse Proxy (Tự động cấp chứng chỉ SSL HTTPS miễn phí cho chaucaojudge.xyz)
   caddy:
     image: caddy:alpine
-    container_name: schooljudge_caddy
+    container_name: chaucaojudge_caddy
     restart: unless-stopped
     ports:
       - "80:80"
@@ -86,7 +86,7 @@ services:
       - app
 
 volumes:
-  sj_postgres_data:
+  chaucaojudge_postgres_data:
     driver: local
   caddy_data:
     driver: local
