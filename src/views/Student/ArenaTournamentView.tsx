@@ -20,7 +20,8 @@ import {
   Award,
   ChevronRight,
   Sparkles,
-  Flag
+  Flag,
+  Bot
 } from 'lucide-react';
 
 interface ArenaProfile {
@@ -270,6 +271,11 @@ export const ArenaTournamentView: React.FC = () => {
     clearInterval(queueTimerRef.current);
   };
 
+  const handleStartBot = (difficulty: 'easy' | 'medium' | 'hard') => {
+    if (!socket) return;
+    socket.emit('arena:start_bot_match', { difficulty });
+  };
+
   const handleSubmitCode = () => {
     if (!socket || !match || submitting) return;
     if (!code.trim()) {
@@ -357,17 +363,29 @@ export const ArenaTournamentView: React.FC = () => {
           {/* Player 2 (Opponent) */}
           <div style={{ display: 'flex', alignItems: 'center', gap: '12px', textAlign: 'right' }}>
             <div>
-              <div style={{ fontSize: '0.95rem', fontWeight: 800, color: 'var(--accent-rose)' }}>
+              <div style={{ fontSize: '0.95rem', fontWeight: 800, color: match.opponent.isBot ? 'var(--accent-cyan)' : 'var(--accent-rose)', display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: '6px' }}>
+                {match.opponent.isBot && <Bot size={16} />}
                 {match.opponent.fullName}
               </div>
               <div style={{ display: 'flex', gap: '8px', alignItems: 'center', justifyContent: 'flex-end', fontSize: '0.78rem', marginTop: '2px' }}>
                 {match.opponent.bestStatus && <VerdictBadge status={match.opponent.bestStatus as any} size="sm" />}
                 <span style={{ color: 'var(--text-muted)' }}>Nộp: {match.opponent.submissionsCount} •</span>
-                <span style={{ color: 'var(--accent-rose)', fontWeight: 700 }}>Điểm: {match.opponent.score}đ</span>
+                <span style={{ color: match.opponent.isBot ? 'var(--accent-cyan)' : 'var(--accent-rose)', fontWeight: 700 }}>Điểm: {match.opponent.score}đ</span>
               </div>
             </div>
-            <div style={{ width: '40px', height: '40px', borderRadius: '10px', background: 'rgba(244, 63, 94, 0.2)', border: '1px solid var(--accent-rose)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 800, color: 'var(--accent-rose)' }}>
-              ĐỐI THỦ
+            <div style={{ 
+              width: '40px', 
+              height: '40px', 
+              borderRadius: '10px', 
+              background: match.opponent.isBot ? 'rgba(56, 189, 248, 0.15)' : 'rgba(244, 63, 94, 0.2)', 
+              border: `1px solid ${match.opponent.isBot ? 'var(--accent-cyan)' : 'var(--accent-rose)'}`, 
+              display: 'flex', 
+              alignItems: 'center', 
+              justifyContent: 'center', 
+              fontWeight: 800, 
+              color: match.opponent.isBot ? 'var(--accent-cyan)' : 'var(--accent-rose)' 
+            }}>
+              {match.opponent.isBot ? <Bot size={20} /> : 'ĐỐI THỦ'}
             </div>
           </div>
         </div>
@@ -724,6 +742,164 @@ export const ArenaTournamentView: React.FC = () => {
           <div style={{ marginTop: '16px', display: 'flex', justifyContent: 'space-between', fontSize: '0.78rem', color: 'var(--text-secondary)' }}>
             <span>Tỉ lệ thắng: <strong>{profile.winRate}%</strong></span>
             <span>Tổng trận: <strong>{profile.wins + profile.losses + profile.draws}</strong></span>
+          </div>
+        </div>
+      </div>
+
+      {/* 3 Difficulty Modes - PvE Bot Arena */}
+      <div style={{ marginBottom: '28px' }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '14px' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <Bot size={20} color="var(--accent-cyan)" />
+            <h3 style={{ fontSize: '1.15rem', fontWeight: 800, margin: 0 }}>
+              Luyện Tập Đấu Máy (PvE Bot AI - 3 Cấp Độ)
+            </h3>
+          </div>
+          <span style={{ fontSize: '0.78rem', color: 'var(--text-muted)' }}>
+            Ghép trận tức thì • Rèn luyện tốc độ thuật toán 15 phút
+          </span>
+        </div>
+
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '16px' }}>
+          {/* Easy Mode */}
+          <div className="glass-card card-interactive" style={{ padding: '20px', display: 'flex', flexDirection: 'column', justifyContent: 'space-between', border: '1px solid rgba(34, 197, 94, 0.3)', background: 'linear-gradient(145deg, rgba(30, 41, 59, 0.6) 0%, rgba(15, 23, 42, 0.8) 100%)' }}>
+            <div>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '12px' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <div style={{ width: '36px', height: '36px', borderRadius: '8px', background: 'rgba(34, 197, 94, 0.15)', border: '1px solid var(--accent-emerald)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                    <Bot size={20} color="var(--accent-emerald)" />
+                  </div>
+                  <div>
+                    <div style={{ fontWeight: 800, fontSize: '1rem', color: 'var(--accent-emerald)' }}>DỄ (TẬP SỰ)</div>
+                    <div style={{ fontSize: '0.74rem', color: 'var(--text-muted)' }}>Bot_TapSu</div>
+                  </div>
+                </div>
+                <span className="badge" style={{ background: 'rgba(34, 197, 94, 0.15)', color: 'var(--accent-emerald)', border: '1px solid rgba(34, 197, 94, 0.3)', fontWeight: 800, fontSize: '0.75rem' }}>
+                  1050 Elo
+                </span>
+              </div>
+
+              <p style={{ fontSize: '0.82rem', color: 'var(--text-secondary)', margin: '0 0 14px 0', lineHeight: 1.5 }}>
+                Phù hợp cho tân binh làm quen áp lực thời gian đấu trường.
+              </p>
+
+              <div style={{ fontSize: '0.76rem', color: 'var(--text-muted)', display: 'flex', flexDirection: 'column', gap: '4px', marginBottom: '16px', background: 'var(--bg-surface-elevated)', padding: '10px', borderRadius: '6px' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                  <span>Tốc độ giải:</span>
+                  <strong style={{ color: 'var(--text-main)' }}>4 - 7 phút</strong>
+                </div>
+                <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                  <span>Tỉ lệ First AC:</span>
+                  <strong style={{ color: 'var(--accent-emerald)' }}>~10%</strong>
+                </div>
+                <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                  <span>Điểm dự kiến:</span>
+                  <strong style={{ color: 'var(--accent-amber)' }}>30 - 60 điểm</strong>
+                </div>
+              </div>
+            </div>
+
+            <button 
+              className="btn btn-outline"
+              onClick={() => handleStartBot('easy')}
+              style={{ width: '100%', borderColor: 'rgba(34, 197, 94, 0.5)', color: 'var(--accent-emerald)', fontWeight: 700, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px' }}
+            >
+              <Bot size={16} /> Đấu Bot Dễ
+            </button>
+          </div>
+
+          {/* Medium Mode */}
+          <div className="glass-card card-interactive" style={{ padding: '20px', display: 'flex', flexDirection: 'column', justifyContent: 'space-between', border: '1px solid rgba(245, 158, 11, 0.3)', background: 'linear-gradient(145deg, rgba(30, 41, 59, 0.6) 0%, rgba(15, 23, 42, 0.8) 100%)' }}>
+            <div>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '12px' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <div style={{ width: '36px', height: '36px', borderRadius: '8px', background: 'rgba(245, 158, 11, 0.15)', border: '1px solid var(--accent-amber)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                    <Bot size={20} color="var(--accent-amber)" />
+                  </div>
+                  <div>
+                    <div style={{ fontWeight: 800, fontSize: '1rem', color: 'var(--accent-amber)' }}>VỪA (CHIẾN BINH)</div>
+                    <div style={{ fontSize: '0.74rem', color: 'var(--text-muted)' }}>Bot_ChienBinh</div>
+                  </div>
+                </div>
+                <span className="badge" style={{ background: 'rgba(245, 158, 11, 0.15)', color: 'var(--accent-amber)', border: '1px solid rgba(245, 158, 11, 0.3)', fontWeight: 800, fontSize: '0.75rem' }}>
+                  1350 Elo
+                </span>
+              </div>
+
+              <p style={{ fontSize: '0.82rem', color: 'var(--text-secondary)', margin: '0 0 14px 0', lineHeight: 1.5 }}>
+                Cân tài cân sức, đòi hỏi tư duy giải thuật tốt và tốc độ ổn định.
+              </p>
+
+              <div style={{ fontSize: '0.76rem', color: 'var(--text-muted)', display: 'flex', flexDirection: 'column', gap: '4px', marginBottom: '16px', background: 'var(--bg-surface-elevated)', padding: '10px', borderRadius: '6px' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                  <span>Tốc độ giải:</span>
+                  <strong style={{ color: 'var(--text-main)' }}>3 - 6 phút</strong>
+                </div>
+                <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                  <span>Tỉ lệ First AC:</span>
+                  <strong style={{ color: 'var(--accent-amber)' }}>~45%</strong>
+                </div>
+                <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                  <span>Điểm dự kiến:</span>
+                  <strong style={{ color: 'var(--accent-amber)' }}>60 - 90 điểm</strong>
+                </div>
+              </div>
+            </div>
+
+            <button 
+              className="btn btn-outline"
+              onClick={() => handleStartBot('medium')}
+              style={{ width: '100%', borderColor: 'rgba(245, 158, 11, 0.5)', color: 'var(--accent-amber)', fontWeight: 700, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px' }}
+            >
+              <Bot size={16} /> Đấu Bot Vừa
+            </button>
+          </div>
+
+          {/* Hard Mode */}
+          <div className="glass-card card-interactive" style={{ padding: '20px', display: 'flex', flexDirection: 'column', justifyContent: 'space-between', border: '1px solid rgba(244, 63, 94, 0.3)', background: 'linear-gradient(145deg, rgba(30, 41, 59, 0.6) 0%, rgba(15, 23, 42, 0.8) 100%)' }}>
+            <div>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '12px' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <div style={{ width: '36px', height: '36px', borderRadius: '8px', background: 'rgba(244, 63, 94, 0.15)', border: '1px solid var(--accent-rose)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                    <Bot size={20} color="var(--accent-rose)" />
+                  </div>
+                  <div>
+                    <div style={{ fontWeight: 800, fontSize: '1rem', color: 'var(--accent-rose)' }}>KHÓ (ĐẠI CAO THỦ)</div>
+                    <div style={{ fontSize: '0.74rem', color: 'var(--text-muted)' }}>Bot_DaiCaoThu</div>
+                  </div>
+                </div>
+                <span className="badge" style={{ background: 'rgba(244, 63, 94, 0.15)', color: 'var(--accent-rose)', border: '1px solid rgba(244, 63, 94, 0.3)', fontWeight: 800, fontSize: '0.75rem' }}>
+                  1850 Elo
+                </span>
+              </div>
+
+              <p style={{ fontSize: '0.82rem', color: 'var(--text-secondary)', margin: '0 0 14px 0', lineHeight: 1.5 }}>
+                Đua tốc độ đỉnh cao, nộp bài thần tốc và đòn Knockout First AC.
+              </p>
+
+              <div style={{ fontSize: '0.76rem', color: 'var(--text-muted)', display: 'flex', flexDirection: 'column', gap: '4px', marginBottom: '16px', background: 'var(--bg-surface-elevated)', padding: '10px', borderRadius: '6px' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                  <span>Tốc độ giải:</span>
+                  <strong style={{ color: 'var(--accent-rose)' }}>1.5 - 3.5 phút</strong>
+                </div>
+                <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                  <span>Tỉ lệ First AC:</span>
+                  <strong style={{ color: 'var(--accent-rose)' }}>~85% (Knockout)</strong>
+                </div>
+                <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                  <span>Điểm dự kiến:</span>
+                  <strong style={{ color: 'var(--accent-rose)' }}>80 - 100 điểm</strong>
+                </div>
+              </div>
+            </div>
+
+            <button 
+              className="btn btn-outline"
+              onClick={() => handleStartBot('hard')}
+              style={{ width: '100%', borderColor: 'rgba(244, 63, 94, 0.5)', color: 'var(--accent-rose)', fontWeight: 700, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px' }}
+            >
+              <Bot size={16} /> Thách Đấu Cao Thủ
+            </button>
           </div>
         </div>
       </div>

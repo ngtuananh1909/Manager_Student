@@ -43,6 +43,10 @@ class ArenaManager {
         this.leaveQueue(user.id);
       });
 
+      socket.on('arena:start_bot_match', (data) => {
+        this.startBotMatch(socket, user, data?.difficulty || 'medium');
+      });
+
       socket.on('arena:submit', async (data) => {
         await this.handleSubmission(socket, user, data);
       });
@@ -91,6 +95,50 @@ class ArenaManager {
 
     // Try matching
     this.checkMatchmaking();
+  }
+
+  startBotMatch(socket, user, difficulty = 'medium') {
+    if (this.userMatchMap.has(user.id)) {
+      const matchId = this.userMatchMap.get(user.id);
+      const match = this.activeMatches.get(matchId);
+      if (match && match.status === 'RUNNING') {
+        socket.emit('arena:reconnect', this.sanitizeMatchForPlayer(match, user.id));
+        return;
+      }
+    }
+
+    this.leaveQueue(user.id);
+
+    const userRating = this.getUserRating(user);
+    const p1 = {
+      socketId: socket.id,
+      userId: user.id,
+      username: user.username,
+      fullName: user.fullName || user.username,
+      rating: userRating
+    };
+
+    let botName = 'Bot_ChienBinh [Vừa]';
+    let botRating = 1350;
+    if (difficulty === 'easy') {
+      botName = 'Bot_TapSu [Dễ]';
+      botRating = 1050;
+    } else if (difficulty === 'hard') {
+      botName = 'Bot_DaiCaoThu [Khó]';
+      botRating = 1850;
+    }
+
+    const p2 = {
+      socketId: null,
+      userId: `bot-${difficulty}-${Date.now()}`,
+      username: botName.toLowerCase().replace(/[^a-z0-9]/g, '_'),
+      fullName: botName,
+      rating: botRating,
+      isBot: true,
+      botDifficulty: difficulty
+    };
+
+    this.startMatch(p1, p2);
   }
 
   leaveQueue(userId) {
@@ -193,7 +241,8 @@ class ArenaManager {
         bestStatus: 'QUEUED',
         bestTime: 0,
         acAt: null,
-        isBot: !!player2.isBot
+        isBot: !!player2.isBot,
+        botDifficulty: player2.botDifficulty || 'medium'
       },
       winnerId: null,
       winReason: null
@@ -223,10 +272,27 @@ class ArenaManager {
     const match = this.activeMatches.get(matchId);
     if (!match) return;
 
-    // Bot will make 1 to 2 submissions during the match
-    // Random target score between 30 and 100
-    const targetScore = Math.random() > 0.4 ? 100 : Math.floor(Math.random() * 70) + 20;
-    const submitDelay = Math.floor(Math.random() * 400000) + 120000; // between 2m and 8m
+    const botDifficulty = match.player2.botDifficulty || 'medium';
+
+    let targetScore = 50;
+    let submitDelay = 300000;
+
+    if (botDifficulty === 'easy') {
+      // Dễ: 10% chance AC, mostly 30-60 points after 4-7 minutes
+      const willAC = Math.random() < 0.1;
+      targetScore = willAC ? 100 : Math.floor(Math.random() * 35) + 30;
+      submitDelay = Math.floor(Math.random() * 180000) + 240000;
+    } else if (botDifficulty === 'hard') {
+      // Khó: 85% chance AC, speed 1.5 - 3.5 minutes
+      const willAC = Math.random() < 0.85;
+      targetScore = willAC ? 100 : Math.floor(Math.random() * 20) + 80;
+      submitDelay = Math.floor(Math.random() * 120000) + 90000;
+    } else {
+      // Vừa: 45% chance AC, speed 3 - 6 minutes
+      const willAC = Math.random() < 0.45;
+      targetScore = willAC ? 100 : Math.floor(Math.random() * 30) + 60;
+      submitDelay = Math.floor(Math.random() * 180000) + 180000;
+    }
 
     const botTimeout = setTimeout(() => {
       const currentMatch = this.activeMatches.get(matchId);
@@ -235,7 +301,7 @@ class ArenaManager {
       currentMatch.player2.submissionsCount += 1;
       currentMatch.player2.score = targetScore;
       currentMatch.player2.bestStatus = targetScore === 100 ? 'AC' : 'WA';
-      currentMatch.player2.bestTime = Math.floor(Math.random() * 200) + 50;
+      currentMatch.player2.bestTime = Math.floor(Math.random() * 150) + 30;
 
       if (targetScore === 100) {
         currentMatch.player2.acAt = Date.now();
@@ -249,7 +315,7 @@ class ArenaManager {
           });
         }
       }
-    }, Math.min(submitDelay, 800000));
+    }, Math.min(submitDelay, 850000));
     if (botTimeout.unref) botTimeout.unref();
   }
 
