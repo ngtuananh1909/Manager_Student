@@ -17,6 +17,7 @@ const SubmissionsHistory = lazy(() => import('./views/Student/SubmissionsHistory
 const LeaderboardView = lazy(() => import('./views/Student/LeaderboardView').then(m => ({ default: m.LeaderboardView })));
 const BadgesView = lazy(() => import('./views/Student/BadgesView').then(m => ({ default: m.BadgesView })));
 const RoadmapView = lazy(() => import('./views/Student/RoadmapView').then(m => ({ default: m.RoadmapView })));
+const CustomContestSandbox = lazy(() => import('./views/Student/CustomContestSandbox').then(m => ({ default: m.CustomContestSandbox })));
 
 const ProblemManager = lazy(() => import('./views/Teacher/ProblemManager').then(m => ({ default: m.ProblemManager })));
 const ContestManager = lazy(() => import('./views/Teacher/ContestManager').then(m => ({ default: m.ContestManager })));
@@ -128,6 +129,11 @@ const MainApp: React.FC = () => {
             {activeTab === 'roadmap' && (
               <ErrorBoundary fallbackTitle="Đã xảy ra sự cố trong Lộ Trình">
                 <RoadmapView onSelectProblem={handleSelectProblem} />
+              </ErrorBoundary>
+            )}
+            {activeTab === 'sandbox' && (
+              <ErrorBoundary fallbackTitle="Đã xảy ra sự cố trong Đấu Trường Tự Luyện">
+                <CustomContestSandbox />
               </ErrorBoundary>
             )}
             {activeTab === 'submissions' && <SubmissionsHistory />}

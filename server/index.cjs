@@ -2466,6 +2466,91 @@ app.delete('/api/roadmap/:id', requireHost, (req, res) => {
   }
 });
 
+// ─── STUDENT CUSTOM CONTESTS & TEST GROUNDS ─────────────────────────────────
+app.get('/api/student/custom-contests', (req, res) => {
+  try {
+    const list = db.getStudentCustomContests(req.user ? req.user.id : null);
+    res.json(list);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post('/api/student/custom-contests', (req, res) => {
+  try {
+    const saved = db.saveStudentCustomContest(req.user.id, req.body);
+    res.json(saved);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.delete('/api/student/custom-contests/:id', (req, res) => {
+  try {
+    const success = db.deleteStudentCustomContest(req.params.id, req.user.id);
+    if (!success) return res.status(404).json({ error: 'Không tìm thấy kỳ thi tự luyện' });
+    res.json({ message: 'Đã xóa kỳ thi tự luyện' });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post('/api/student/custom-contests/:id/run', async (req, res) => {
+  try {
+    const { code } = req.body;
+    if (!code || !code.trim()) {
+      return res.status(400).json({ error: 'Mã nguồn không được để trống' });
+    }
+
+    const contest = db.getStudentCustomContest(req.params.id);
+    if (!contest) {
+      return res.status(404).json({ error: 'Không tìm thấy kỳ thi tự luyện' });
+    }
+
+    const testCases = (contest.testCases || []).map((tc, idx) => ({
+      id: tc.id || `tc-${idx}`,
+      name: tc.name || `Test #${idx + 1}`,
+      input: tc.input || '',
+      expectedOutput: tc.expectedOutput || '',
+      score: tc.score || Math.round(100 / Math.max(1, (contest.testCases || []).length))
+    }));
+
+    if (testCases.length === 0) {
+      return res.status(400).json({ error: 'Vui lòng thêm ít nhất 1 test case để chạy thử' });
+    }
+
+    const dummyProblem = {
+      id: contest.id,
+      code: 'CUSTOM',
+      title: contest.title,
+      timeLimit: contest.timeLimit || 1000,
+      memoryLimit: contest.memoryLimit || 256,
+      points: 100,
+      testCases
+    };
+
+    const dummySub = {
+      id: `custom-run-${Date.now()}`,
+      userId: req.user.id,
+      code,
+      language: 'cpp'
+    };
+
+    const result = await judge.gradeSubmission(dummySub, dummyProblem);
+
+    // Save last result on contest
+    db.saveStudentCustomContest(req.user.id, {
+      ...contest,
+      lastCode: code,
+      lastRunResult: result
+    });
+
+    res.json(result);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // ─── STATIC WEB APPLICATION SERVING (BROWSER & CROSS-PLATFORM) ─────────────
 const distDir = path.join(__dirname, '../dist');
 if (fs.existsSync(distDir)) {

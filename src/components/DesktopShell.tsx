@@ -16,7 +16,8 @@ import {
   LineChart,
   User as UserIcon,
   ChevronRight,
-  Compass
+  Compass,
+  FlaskConical
 } from 'lucide-react';
 
 interface Props {
@@ -40,9 +41,10 @@ export const DesktopShell: React.FC<Props> = ({ activeTab, setActiveTab, childre
   const studentNav: NavItem[] = [
     { id: 'contests', label: 'Kỳ Thi & Kiểm Tra', icon: <Trophy size={18} />, shortcut: '1' },
     { id: 'roadmap', label: 'Lộ Trình Thuật Toán', icon: <Compass size={18} />, shortcut: '2' },
-    { id: 'leaderboard', label: 'Bảng Xếp Hạng', icon: <BarChart3 size={18} />, shortcut: '3' },
-    { id: 'submissions', label: 'Lịch Sử Nộp Bài', icon: <Layers size={18} />, shortcut: '4' },
-    { id: 'badges', label: 'Huy Hiệu & Thành Tích', icon: <Sparkles size={18} />, shortcut: '5' },
+    { id: 'sandbox', label: 'Đấu Trường Tự Luyện', icon: <FlaskConical size={18} />, shortcut: '3' },
+    { id: 'leaderboard', label: 'Bảng Xếp Hạng', icon: <BarChart3 size={18} />, shortcut: '4' },
+    { id: 'submissions', label: 'Lịch Sử Nộp Bài', icon: <Layers size={18} />, shortcut: '5' },
+    { id: 'badges', label: 'Huy Hiệu & Thành Tích', icon: <Sparkles size={18} />, shortcut: '6' },
   ];
 
   // Teacher Navigation Tabs

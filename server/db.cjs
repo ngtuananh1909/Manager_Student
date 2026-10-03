@@ -1652,6 +1652,55 @@ class Database {
     this.save();
     return true;
   }
+
+  // ─── STUDENT CUSTOM CONTESTS & TEST GROUNDS ─────────────────────────────────
+  getStudentCustomContests(userId) {
+    this.data.student_custom_contests = this.data.student_custom_contests || [];
+    if (userId) {
+      return this.data.student_custom_contests.filter(c => c.userId === userId);
+    }
+    return this.data.student_custom_contests;
+  }
+
+  getStudentCustomContest(id) {
+    this.data.student_custom_contests = this.data.student_custom_contests || [];
+    return this.data.student_custom_contests.find(c => c.id === id) || null;
+  }
+
+  saveStudentCustomContest(userId, contestData) {
+    this.data.student_custom_contests = this.data.student_custom_contests || [];
+    const id = contestData.id || newId('custom-contest');
+    const existingIdx = this.data.student_custom_contests.findIndex(c => c.id === id);
+
+    const record = {
+      ...(existingIdx >= 0 ? this.data.student_custom_contests[existingIdx] : {}),
+      ...contestData,
+      id,
+      userId,
+      timeLimit: contestData.timeLimit || 1000,
+      memoryLimit: contestData.memoryLimit || 256,
+      testCases: Array.isArray(contestData.testCases) ? contestData.testCases : [],
+      updatedAt: new Date().toISOString()
+    };
+    if (!record.createdAt) record.createdAt = new Date().toISOString();
+
+    if (existingIdx >= 0) {
+      this.data.student_custom_contests[existingIdx] = record;
+    } else {
+      this.data.student_custom_contests.unshift(record);
+    }
+    this.save();
+    return record;
+  }
+
+  deleteStudentCustomContest(id, userId) {
+    this.data.student_custom_contests = this.data.student_custom_contests || [];
+    const initialLen = this.data.student_custom_contests.length;
+    this.data.student_custom_contests = this.data.student_custom_contests.filter(c => c.id !== id || (userId && c.userId !== userId));
+    const deleted = this.data.student_custom_contests.length < initialLen;
+    if (deleted) this.save();
+    return deleted;
+  }
 }
 
 module.exports = new Database();
