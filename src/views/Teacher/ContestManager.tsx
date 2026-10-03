@@ -834,7 +834,12 @@ export const ContestManager: React.FC = () => {
   const updateProblemConfig = (probCode: string, field: 'points' | 'timeLimit' | 'memoryLimit' | 'title' | 'ioMode' | 'inputFile' | 'outputFile', value: any) => {
     setImportedFolderProblems(prev => prev.map(p => {
       if (p.code.toLowerCase() === probCode.toLowerCase()) {
-        return { ...p, [field]: value };
+        const updated = { ...p, [field]: value };
+        if (field === 'ioMode' && value === 'freopen') {
+          if (!updated.inputFile) updated.inputFile = `${p.code.toLowerCase()}.inp`;
+          if (!updated.outputFile) updated.outputFile = `${p.code.toLowerCase()}.out`;
+        }
+        return updated;
       }
       return p;
     }));
@@ -938,12 +943,10 @@ export const ContestManager: React.FC = () => {
       const isFreopen = p.ioMode === 'freopen' || formContest.requireFreopen;
       if (isFreopen) {
         if (!p.inputFile || !p.inputFile.trim()) {
-          alert(`❌ Bài "${p.code}": Vui lòng nhập tên tệp đầu vào (Input file) khi chọn freopen`);
-          return;
+          p.inputFile = `${p.code.toLowerCase()}.inp`;
         }
         if (!p.outputFile || !p.outputFile.trim()) {
-          alert(`❌ Bài "${p.code}": Vui lòng nhập tên tệp đầu ra (Output file) khi chọn freopen`);
-          return;
+          p.outputFile = `${p.code.toLowerCase()}.out`;
         }
       }
     }
