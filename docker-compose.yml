@@ -1,4 +1,17 @@
+# ==============================================================================
+# ChauCaoJudge LAN — Docker Compose 1-Click Setup
+# ==============================================================================
+# Chỉ cần chạy:
+#   docker compose up -d
+# Docker sẽ tự động:
+#   1. Kéo image PostgreSQL 16 Alpine & pgweb Web UI
+#   2. Khởi tạo Database "schooljudge", User "sj_admin", mật khẩu
+#   3. Tự động chạy toàn bộ schema 17 bảng từ server/database/schema.sql
+#   4. Khởi chạy Web UI xem CSDL trực quan trên http://localhost:5000
+# ==============================================================================
+
 services:
+  # 1. Cơ sở dữ liệu PostgreSQL 16
   postgres:
     image: postgres:16-alpine
     container_name: schooljudge_db
@@ -8,10 +21,12 @@ services:
       POSTGRES_USER: ${PG_USER:-sj_admin}
       POSTGRES_PASSWORD: ${PG_PASSWORD:-sj_secret_local_lan_2026}
     ports:
-      # Bind only to 127.0.0.1 for host-only security
+      # Bind vào localhost máy host để đảm bảo an toàn mạng LAN
       - "127.0.0.1:${PG_PORT:-5432}:5432"
     volumes:
+      # Dữ liệu bền vững lưu trên volume Docker
       - sj_postgres_data:/var/lib/postgresql/data
+      # Tự động nạp schema 17 bảng ngay lần đầu khởi tạo container
       - ./server/database/schema.sql:/docker-entrypoint-initdb.d/01_schema.sql:ro
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ${PG_USER:-sj_admin} -d ${PG_DATABASE:-schooljudge}"]
@@ -19,7 +34,7 @@ services:
       timeout: 3s
       retries: 10
 
-  # Container Web UI CSDL (pgweb) siêu nhẹ (~30MB RAM)
+  # 2. Giao diện Web UI quản lý CSDL trực quan (pgweb ~30MB RAM)
   db-viewer:
     image: sosedoff/pgweb:latest
     container_name: schooljudge_pgweb

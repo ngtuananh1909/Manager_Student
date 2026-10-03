@@ -127,7 +127,7 @@ async function updateUser(id, updates = {}) {
   const current = await getUser(id);
   if (!current) return null;
 
-  return await transaction(async (client) => {
+  await transaction(async (client) => {
     const fields = [];
     const values = [];
     let idx = 1;
@@ -171,9 +171,9 @@ async function updateUser(id, updates = {}) {
         [current.id, updates.classId]
       );
     }
-
-    return await getUser(current.id);
   });
+
+  return await getUser(current.id);
 }
 
 /**

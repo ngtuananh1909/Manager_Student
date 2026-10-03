@@ -224,7 +224,7 @@ async function updateContest(id, updates = {}) {
   const current = await getContest(id);
   if (!current) return null;
 
-  return await transaction(async (client) => {
+  await transaction(async (client) => {
     const fields = [];
     const values = [];
     let idx = 1;
@@ -345,9 +345,9 @@ async function updateContest(id, updates = {}) {
         await client.query("INSERT INTO contest_targets (contest_id, target_type, target_id) VALUES ($1, 'GRADE', $2)", [id, String(g)]);
       }
     }
-
-    return await getContest(id);
   });
+
+  return await getContest(id);
 }
 
 /**

@@ -98,7 +98,7 @@ async function getSubmission(id) {
   const detailsSql = `
     SELECT 
       test_index AS "testIndex", name, status, time, memory,
-      score_earned AS "scoreEarned", error_message AS "message"
+      score_earned AS "scoreEarned", message
     FROM submission_details
     WHERE submission_id = $1
     ORDER BY test_index ASC
@@ -155,7 +155,7 @@ async function createSubmission(sub) {
  * Cập nhật kết quả chấm bài của một submission
  */
 async function updateSubmission(id, updates = {}) {
-  return await transaction(async (client) => {
+  await transaction(async (client) => {
     const fields = [];
     const values = [];
     let idx = 1;
@@ -199,7 +199,7 @@ async function updateSubmission(id, updates = {}) {
       await client.query('DELETE FROM submission_details WHERE submission_id = $1', [id]);
       for (const d of updates.details) {
         await client.query(`
-          INSERT INTO submission_details (submission_id, test_index, name, status, time, memory, score_earned, error_message)
+          INSERT INTO submission_details (submission_id, test_index, name, status, time, memory, score_earned, message)
           VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
         `, [
           id,
@@ -213,9 +213,9 @@ async function updateSubmission(id, updates = {}) {
         ]);
       }
     }
-
-    return await getSubmission(id);
   });
+
+  return await getSubmission(id);
 }
 
 /**

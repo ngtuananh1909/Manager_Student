@@ -94,6 +94,7 @@ async function migrate() {
     }
 
     // 3. Users & Enrollments
+    const validClassIds = new Set((data.classes || []).map(c => c.id));
     if (Array.isArray(data.users)) {
       for (const u of data.users) {
         await client.query(`
@@ -115,18 +116,22 @@ async function migrate() {
         ]);
         stats.users++;
 
-        // Enrollments
-        const classes = Array.isArray(u.classes) && u.classes.length > 0
-          ? u.classes
-          : (u.classId ? [u.classId] : []);
+        // Enrollments: Chỉ áp dụng cho học sinh (role = 'user') và lớp tồn tại
+        if (u.role === 'user') {
+          const classes = Array.isArray(u.classes) && u.classes.length > 0
+            ? u.classes
+            : (u.classId ? [u.classId] : []);
 
-        for (const cId of classes) {
-          await client.query(`
-            INSERT INTO student_enrollments (student_id, class_id)
-            VALUES ($1, $2)
-            ON CONFLICT DO NOTHING
-          `, [u.id, cId]);
-          stats.enrollments++;
+          for (const cId of classes) {
+            if (validClassIds.has(cId)) {
+              await client.query(`
+                INSERT INTO student_enrollments (student_id, class_id)
+                VALUES ($1, $2)
+                ON CONFLICT DO NOTHING
+              `, [u.id, cId]);
+              stats.enrollments++;
+            }
+          }
         }
       }
     }
