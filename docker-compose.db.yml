@@ -1,0 +1,24 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: schooljudge_db
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${PG_DATABASE:-schooljudge}
+      POSTGRES_USER: ${PG_USER:-sj_admin}
+      POSTGRES_PASSWORD: ${PG_PASSWORD:-sj_secret_local_lan_2026}
+    ports:
+      # Bind only to 127.0.0.1 for host-only security
+      - "127.0.0.1:${PG_PORT:-5432}:5432"
+    volumes:
+      - sj_postgres_data:/var/lib/postgresql/data
+      - ./server/database/schema.sql:/docker-entrypoint-initdb.d/01_schema.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${PG_USER:-sj_admin} -d ${PG_DATABASE:-schooljudge}"]
+      interval: 3s
+      timeout: 3s
+      retries: 10
+
+volumes:
+  sj_postgres_data:
+    driver: local
