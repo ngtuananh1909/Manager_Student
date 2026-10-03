@@ -70,7 +70,7 @@ function validateManifestShape(manifest) {
   if (
     typeof manifest.fileName !== 'string' ||
     path.basename(manifest.fileName) !== manifest.fileName ||
-    !/^[a-zA-Z0-9._ -]+\.exe$/i.test(manifest.fileName)
+    !/^[a-zA-Z0-9._ -]+\.(exe|AppImage|pacman|deb|rpm|tar\.gz|pkg\.tar\.zst)$/i.test(manifest.fileName)
   ) {
     fail('INVALID_UPDATE_FILENAME', 'Tên file cập nhật không hợp lệ.');
   }
