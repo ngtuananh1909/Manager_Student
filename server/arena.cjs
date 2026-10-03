@@ -200,6 +200,25 @@ class ArenaManager {
     const eligibleProblems = problems.filter(p => p.testCases && p.testCases.length > 0) || problems;
     const selectedProblem = eligibleProblems[Math.floor(Math.random() * eligibleProblems.length)];
 
+    // Locate the parent contest if this problem was imported as part of an exam/contest
+    const contests = this.db.getContests() || [];
+    const parentContest = contests.find(c => Array.isArray(c.problemIds) && c.problemIds.includes(selectedProblem.id)) || null;
+
+    let pdfUrl = selectedProblem.pdfUrl || '';
+    let pdfFileName = selectedProblem.pdfFileName || '';
+    if (!pdfUrl && parentContest) {
+      if (parentContest.pdfUrl) {
+        pdfUrl = parentContest.pdfUrl;
+        pdfFileName = parentContest.pdfFileName || `${parentContest.title || 'de_thi'}.pdf`;
+      } else if (parentContest._pdfDiskPath) {
+        pdfUrl = `/api/contests/${parentContest.id}/pdf`;
+        pdfFileName = parentContest.pdfFileName || `${parentContest.title || 'de_thi'}.pdf`;
+      }
+    }
+
+    const statementHtml = selectedProblem.statementHtml || parentContest?.statementHtml || '';
+    const description = selectedProblem.description || selectedProblem.statement || parentContest?.description || '';
+
     const matchId = newId('duel');
     const now = Date.now();
     const duration = 15 * 60; // 15 minutes = 900s
@@ -217,7 +236,12 @@ class ArenaManager {
       problemTitle: selectedProblem.title,
       timeLimit: selectedProblem.timeLimit || 1000,
       memoryLimit: selectedProblem.memoryLimit || 256,
-      description: selectedProblem.description || '',
+      description,
+      statementHtml,
+      pdfUrl,
+      pdfFileName,
+      contestTitle: parentContest?.title || '',
+      contestId: parentContest?.id || '',
       samples: selectedProblem.samples || [],
       player1: {
         userId: player1.userId,
@@ -553,6 +577,11 @@ class ArenaManager {
         timeLimit: match.timeLimit,
         memoryLimit: match.memoryLimit,
         description: match.description,
+        statementHtml: match.statementHtml,
+        pdfUrl: match.pdfUrl,
+        pdfFileName: match.pdfFileName,
+        contestTitle: match.contestTitle,
+        contestId: match.contestId,
         samples: match.samples
       },
       me,

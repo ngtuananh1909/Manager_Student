@@ -3,6 +3,7 @@ import { apiFetch } from '../../lib/api';
 import { useNetwork } from '../../context/NetworkContext';
 import { useAuth } from '../../context/AuthContext';
 import { VerdictBadge } from '../../components/VerdictBadge';
+import { StatementViewer } from '../../components/StatementViewer';
 import { 
   Swords, 
   Flame, 
@@ -21,7 +22,9 @@ import {
   ChevronRight,
   Sparkles,
   Flag,
-  Bot
+  Bot,
+  FileText,
+  Cpu
 } from 'lucide-react';
 
 interface ArenaProfile {
@@ -60,6 +63,11 @@ interface ActiveMatch {
     timeLimit: number;
     memoryLimit: number;
     description: string;
+    statementHtml?: string;
+    pdfUrl?: string;
+    pdfFileName?: string;
+    contestTitle?: string;
+    contestId?: string;
     samples: any[];
   };
   me: {
@@ -392,34 +400,82 @@ export const ArenaTournamentView: React.FC = () => {
 
         {/* Duel Workspace Split */}
         <div style={{ flex: 1, display: 'grid', gridTemplateColumns: '1fr 1fr', overflow: 'hidden' }}>
-          {/* Left: Problem Statement */}
-          <div style={{ display: 'flex', flexDirection: 'column', borderRight: '1px solid var(--border-medium)', background: 'var(--bg-app)', overflowY: 'auto', padding: '20px 24px' }}>
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '12px' }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                <span style={{ fontFamily: 'var(--font-mono)', fontWeight: 800, fontSize: '1rem', color: 'var(--accent-cyan)' }}>
-                  [{match.problem.code}]
+          {/* Left: Problem Statement & Official Contest Document */}
+          <div style={{ display: 'flex', flexDirection: 'column', borderRight: '1px solid var(--border-medium)', background: 'var(--bg-app)', overflowY: 'auto', padding: '16px 20px', gap: '12px' }}>
+            {/* Header info */}
+            <div>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '10px', marginBottom: '8px', flexWrap: 'wrap' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <span style={{ fontFamily: 'var(--font-mono)', fontWeight: 800, fontSize: '1rem', color: 'var(--accent-cyan)', background: 'rgba(56, 189, 248, 0.1)', padding: '2px 8px', borderRadius: '4px' }}>
+                    [{match.problem.code}]
+                  </span>
+                  <h3 style={{ fontSize: '1.15rem', fontWeight: 800, margin: 0, color: 'var(--text-main)' }}>
+                    {match.problem.title}
+                  </h3>
+                </div>
+
+                {match.problem.contestTitle && (
+                  <div style={{
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: '5px',
+                    fontSize: '0.74rem',
+                    fontWeight: 700,
+                    background: 'rgba(236, 72, 153, 0.12)',
+                    border: '1px solid rgba(236, 72, 153, 0.35)',
+                    color: '#f472b6',
+                    padding: '3px 8px',
+                    borderRadius: '6px'
+                  }}>
+                    <Trophy size={12} />
+                    <span>Kỳ thi: {match.problem.contestTitle}</span>
+                  </div>
+                )}
+              </div>
+
+              <div style={{ display: 'flex', gap: '10px', fontSize: '0.78rem', color: 'var(--text-muted)', fontFamily: 'var(--font-mono)', flexWrap: 'wrap' }}>
+                <span style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
+                  <Clock size={12} style={{ color: 'var(--accent-amber)' }} />
+                  <span>Time Limit: <strong style={{ color: 'var(--text-main)' }}>{match.problem.timeLimit}ms</strong></span>
                 </span>
-                <h3 style={{ fontSize: '1.15rem', fontWeight: 800, margin: 0, color: 'var(--text-main)' }}>
-                  {match.problem.title}
-                </h3>
+                <span>•</span>
+                <span style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
+                  <Cpu size={12} style={{ color: 'var(--accent-cyan)' }} />
+                  <span>Memory Limit: <strong style={{ color: 'var(--text-main)' }}>{match.problem.memoryLimit}MB</strong></span>
+                </span>
               </div>
             </div>
 
-            <div style={{ display: 'flex', gap: '12px', fontSize: '0.78rem', color: 'var(--text-muted)', marginBottom: '16px', fontFamily: 'var(--font-mono)' }}>
-              <span>⏱ Time Limit: {match.problem.timeLimit}ms</span>
-              <span>•</span>
-              <span>💾 Memory Limit: {match.problem.memoryLimit}MB</span>
-            </div>
+            <div style={{ height: '1px', background: 'var(--border-subtle)', margin: '2px 0' }} />
 
-            <div style={{ fontSize: '0.88rem', lineHeight: 1.6, color: 'var(--text-main)', whiteSpace: 'pre-wrap', marginBottom: '20px' }}>
-              {match.problem.description || 'Giải thuật toán bài này và nộp code C++ để đạt 100 điểm AC trước đối thủ!'}
-            </div>
+            {/* Document Statement Viewer: PDF or HTML or Text */}
+            {match.problem.pdfUrl ? (
+              <div style={{ minHeight: '520px', borderRadius: 'var(--radius-md)', overflow: 'hidden', border: '1px solid var(--border-subtle)' }}>
+                <StatementViewer
+                  url={match.problem.pdfUrl}
+                  fileName={match.problem.pdfFileName || `${match.problem.code}.pdf`}
+                  title={match.problem.title}
+                  serverUrl={serverUrl}
+                  height="580px"
+                />
+              </div>
+            ) : match.problem.statementHtml ? (
+              <div 
+                className="problem-statement-html"
+                style={{ fontSize: '0.92rem', lineHeight: 1.7, color: 'var(--text-main)', padding: '4px' }}
+                dangerouslySetInnerHTML={{ __html: match.problem.statementHtml }}
+              />
+            ) : (
+              <div style={{ fontSize: '0.9rem', lineHeight: 1.7, color: 'var(--text-main)', whiteSpace: 'pre-wrap', padding: '4px' }}>
+                {match.problem.description || 'Giải thuật toán bài này và nộp code C++ để đạt 100 điểm AC trước đối thủ!'}
+              </div>
+            )}
 
             {/* Samples */}
             {match.problem.samples && match.problem.samples.length > 0 && (
-              <div>
-                <div style={{ fontSize: '0.82rem', fontWeight: 800, color: 'var(--text-secondary)', marginBottom: '8px' }}>
-                  TEST MẪU (SAMPLES):
+              <div style={{ marginTop: '8px' }}>
+                <div style={{ fontSize: '0.82rem', fontWeight: 800, color: 'var(--text-secondary)', marginBottom: '8px', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                  <Code2 size={13} style={{ color: 'var(--accent-amber)' }} /> TEST MẪU (SAMPLES):
                 </div>
                 {match.problem.samples.map((s, idx) => (
                   <div key={idx} style={{ background: 'var(--bg-surface-elevated)', border: '1px solid var(--border-subtle)', borderRadius: '6px', padding: '10px 12px', marginBottom: '10px' }}>
