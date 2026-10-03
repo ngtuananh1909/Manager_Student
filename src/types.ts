@@ -44,6 +44,9 @@ export interface Problem {
   outputFile?: string;
   testCases?: TestCase[]; // Kept on server, never sent to student
   testCount?: number;     // Total count of tests (shown to student)
+  solution?: string;      // Hướng dẫn / Lời giải thuật toán (Markdown, code mẫu)
+  solutionVisible?: boolean; // Cho phép học sinh xem lời giải
+  hasSolution?: boolean;  // Đánh dấu bài này có lời giải hay không
 }
 
 export interface DiffLine {

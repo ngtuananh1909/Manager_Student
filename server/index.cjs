@@ -322,6 +322,51 @@ app.put('/api/problems/:id', requireHost, (req, res) => {
   res.json(updated);
 });
 
+// SOLUTION FOR PROBLEM (Editorial / Algorithm guide / Reference code)
+app.get('/api/problems/:id/solution', (req, res) => {
+  const prob = db.getProblem(req.params.id);
+  if (!prob) return res.status(404).json({ error: 'Không tìm thấy bài tập' });
+
+  // Host can always view
+  if (req.user.role === 'host') {
+    return res.json({ 
+      allowed: true, 
+      solution: prob.solution || '', 
+      solutionVisible: !!prob.solutionVisible,
+      problemCode: prob.code,
+      problemTitle: prob.title
+    });
+  }
+
+  // Student can view if:
+  // 1. Teacher explicitly enabled solutionVisible, OR
+  // 2. Student already has an AC submission for this problem
+  let canView = !!prob.solutionVisible;
+  if (!canView && req.user) {
+    const subs = db.getSubmissions().filter(s => s.userId === req.user.id && (s.problemId === prob.id || s.problemCode === prob.code));
+    const hasAc = subs.some(s => s.status === 'AC' || (s.score && s.score >= (prob.points || 100)));
+    if (hasAc) {
+      canView = true;
+    }
+  }
+
+  if (!canView) {
+    return res.status(403).json({ 
+      allowed: false, 
+      error: 'Lời giải chưa được công bố hoặc bạn cần đạt AC (100 điểm) bài này trước để mở khóa lời giải.',
+      hasAcRequired: true,
+      hasSolution: !!(prob.solution && prob.solution.trim())
+    });
+  }
+
+  res.json({
+    allowed: true,
+    solution: prob.solution || '',
+    problemCode: prob.code,
+    problemTitle: prob.title
+  });
+});
+
 app.delete('/api/problems/:id', requireHost, (req, res) => {
   const prob = db.getProblem(req.params.id);
   if (prob && prob._pdfDiskPath && fs.existsSync(prob._pdfDiskPath)) {
