@@ -15,7 +15,10 @@ import {
   LogOut,
   LineChart,
   User as UserIcon,
-  ChevronRight
+  ChevronRight,
+  Compass,
+  FlaskConical,
+  Swords
 } from 'lucide-react';
 
 interface Props {
@@ -38,9 +41,12 @@ export const DesktopShell: React.FC<Props> = ({ activeTab, setActiveTab, childre
   // Student Navigation Tabs
   const studentNav: NavItem[] = [
     { id: 'contests', label: 'Kỳ Thi & Kiểm Tra', icon: <Trophy size={18} />, shortcut: '1' },
-    { id: 'leaderboard', label: 'Bảng Xếp Hạng', icon: <BarChart3 size={18} />, shortcut: '2' },
-    { id: 'submissions', label: 'Lịch Sử Nộp Bài', icon: <Layers size={18} />, shortcut: '3' },
-    { id: 'badges', label: 'Huy Hiệu & Thành Tích', icon: <Sparkles size={18} />, shortcut: '4' },
+    { id: 'roadmap', label: 'Lộ Trình Thuật Toán', icon: <Compass size={18} />, shortcut: '2' },
+    { id: 'arena', label: 'Đấu Trường 1v1', icon: <Swords size={18} />, shortcut: '3' },
+    { id: 'sandbox', label: 'Tự Luyện & Test Ground', icon: <FlaskConical size={18} />, shortcut: '4' },
+    { id: 'leaderboard', label: 'Bảng Xếp Hạng', icon: <BarChart3 size={18} />, shortcut: '5' },
+    { id: 'submissions', label: 'Lịch Sử Nộp Bài', icon: <Layers size={18} />, shortcut: '6' },
+    { id: 'badges', label: 'Huy Hiệu & Thành Tích', icon: <Sparkles size={18} />, shortcut: '7' },
   ];
 
   // Teacher Navigation Tabs
@@ -48,12 +54,13 @@ export const DesktopShell: React.FC<Props> = ({ activeTab, setActiveTab, childre
     { id: 'contests-manage', label: 'Kỳ Thi & Ca Thi', icon: <Trophy size={18} />, shortcut: '1' },
     { id: 'students', label: 'Quản Lý Học Sinh', icon: <Users size={18} />, shortcut: '2' },
     { id: 'problems-manage', label: 'Ngân Hàng Đề & Test', icon: <Layers size={18} />, shortcut: '3' },
-    { id: 'live-monitor', label: 'Giám Sát Phòng Thi Live', icon: <Activity size={18} />, shortcut: '4' },
-    { id: 'leaderboard', label: 'Bảng Điểm Kỳ Thi', icon: <BarChart3 size={18} />, shortcut: '5' },
-    { id: 'anti-cheat', label: 'Cảnh Báo Gian Lận', icon: <ShieldAlert size={18} />, shortcut: '6' },
-    { id: 'classes', label: 'Quản Lý Lớp Học', icon: <School size={18} />, shortcut: '7' },
-    { id: 'statistics', label: 'Báo Cáo Thống Kê', icon: <LineChart size={18} />, shortcut: '8' },
-    { id: 'settings', label: 'Cấu Hình Máy Chấm (Sandbox)', icon: <Settings size={18} />, shortcut: '9' },
+    { id: 'roadmap-manage', label: 'Lộ Trình Học Tập', icon: <Compass size={18} />, shortcut: '4' },
+    { id: 'live-monitor', label: 'Giám Sát Phòng Thi Live', icon: <Activity size={18} />, shortcut: '5' },
+    { id: 'leaderboard', label: 'Bảng Điểm Kỳ Thi', icon: <BarChart3 size={18} />, shortcut: '6' },
+    { id: 'anti-cheat', label: 'Cảnh Báo Gian Lận', icon: <ShieldAlert size={18} />, shortcut: '7' },
+    { id: 'classes', label: 'Quản Lý Lớp Học', icon: <School size={18} />, shortcut: '8' },
+    { id: 'statistics', label: 'Báo Cáo Thống Kê', icon: <LineChart size={18} />, shortcut: '9' },
+    { id: 'settings', label: 'Cấu Hình Máy Chấm (Sandbox)', icon: <Settings size={18} />, shortcut: '0' },
   ];
 
   const currentNavItems = role === 'host' ? teacherNav : studentNav;

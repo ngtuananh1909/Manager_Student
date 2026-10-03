@@ -44,6 +44,9 @@ export interface Problem {
   outputFile?: string;
   testCases?: TestCase[]; // Kept on server, never sent to student
   testCount?: number;     // Total count of tests (shown to student)
+  solution?: string;      // Hướng dẫn / Lời giải thuật toán (Markdown, code mẫu)
+  solutionVisible?: boolean; // Cho phép học sinh xem lời giải
+  hasSolution?: boolean;  // Đánh dấu bài này có lời giải hay không
 }
 
 export interface DiffLine {
@@ -369,3 +372,67 @@ export interface BatchGradeProgress {
   finished?: boolean;
   errorList?: Array<{ submissionId: string; userName: string; problemCode?: string; error: string; status?: Verdict }>;
 }
+
+export interface RoadmapExercise {
+  code: string;
+  title: string;
+  difficulty: string;
+  points: number;
+  isPassed: boolean;
+  userScore?: number;
+}
+
+export interface RoadmapTopic {
+  id: string;
+  title: string;
+  description: string;
+  level: string;
+  icon?: string;
+  order: number;
+  problemCodes: string[];
+  exercises?: RoadmapExercise[];
+  total?: number;
+  completed?: number;
+  progressPercent?: number;
+}
+
+export interface CustomTestCase {
+  id: string;
+  name: string;
+  input: string;
+  expectedOutput: string;
+  score?: number;
+}
+
+export interface StudentCustomContest {
+  id: string;
+  userId: string;
+  title: string;
+  description?: string;
+  timeLimit?: number; // ms
+  memoryLimit?: number; // MB
+  testCases: CustomTestCase[];
+  createdAt: string;
+  lastCode?: string;
+  lastRunResult?: {
+    status: Verdict;
+    score: number;
+    passedTests: number;
+    totalTests: number;
+    executionTime: number;
+    memoryUsed: number;
+    compileError?: string;
+    details?: Array<{
+      testIndex: number;
+      name?: string;
+      status: Verdict;
+      time: number;
+      memory: number;
+      userOutput?: string;
+      expectedOutput?: string;
+      diff?: DiffLine[];
+    }>;
+  };
+}
+
+

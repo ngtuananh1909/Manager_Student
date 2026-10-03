@@ -43,10 +43,16 @@ export const NetworkProvider: React.FC<{ children: React.ReactNode }> = ({ child
   const [lanUrl, setLanUrlState] = useState<string>(() => {
     const saved = localStorage.getItem('schooljudge_lan_url');
     if (saved) return cleanUrl(saved);
-    // If running in browser loaded from remote LAN IP (e.g. http://192.168.3.5:4000)
-    if (typeof window !== 'undefined' && window.location.hostname && window.location.hostname !== 'localhost' && window.location.hostname !== '127.0.0.1') {
-      const port = window.location.port ? `:${window.location.port}` : '';
-      return `${window.location.protocol}//${window.location.hostname}${port}`;
+    // If running in browser (non-Electron or web origin)
+    if (typeof window !== 'undefined' && window.location?.origin && window.location.origin.startsWith('http')) {
+      const isElectron = !!(window as any).electronAPI;
+      if (!isElectron) {
+        return cleanUrl(window.location.origin);
+      }
+      if (window.location.hostname && window.location.hostname !== 'localhost' && window.location.hostname !== '127.0.0.1') {
+        const port = window.location.port ? `:${window.location.port}` : '';
+        return `${window.location.protocol}//${window.location.hostname}${port}`;
+      }
     }
     return 'http://localhost:4000';
   });

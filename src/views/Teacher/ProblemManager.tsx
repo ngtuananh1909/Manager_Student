@@ -55,6 +55,8 @@ export const ProblemManager: React.FC = () => {
     category: 'C++11',
     description: '',
     sampleCode: '#include <iostream>\nusing namespace std;\n\nint main() {\n    // C++11 Code\n    return 0;\n}',
+    solution: '',
+    solutionVisible: false,
     samples: [],
     testCases: []
   });
@@ -602,6 +604,8 @@ export const ProblemManager: React.FC = () => {
                 category: 'C++11',
                 description: '### Đề bài\n\n### Dữ liệu vào (Input)\n\n### Dữ liệu ra (Output)\n',
                 sampleCode: '#include <iostream>\nusing namespace std;\n\nint main() {\n    // Code C++11\n    return 0;\n}',
+                solution: '',
+                solutionVisible: false,
                 samples: [],
                 testCases: []
               });
@@ -1323,6 +1327,50 @@ export const ProblemManager: React.FC = () => {
                     </div>
                   </div>
                 )}
+              </div>
+
+              {/* PHẦN 5: LỜI GIẢI, Ý TƯỞNG THUẬT TOÁN & CODE MẪU (EDITORIAL) */}
+              <div style={{ 
+                marginBottom: '24px', 
+                background: 'var(--bg-surface-elevated)', 
+                border: '1px solid var(--border-medium)', 
+                borderRadius: 'var(--radius-md)', 
+                padding: '16px' 
+              }}>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '12px', flexWrap: 'wrap', gap: '8px' }}>
+                  <div>
+                    <div style={{ fontSize: '0.9rem', fontWeight: 800, color: 'var(--text-main)', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                      <Sparkles size={17} color="var(--accent-amber)" />
+                      💡 LỜI GIẢI, Ý TƯỞNG THUẬT TOÁN & CODE MẪU (EDITORIAL)
+                    </div>
+                    <div style={{ fontSize: '0.78rem', color: 'var(--text-secondary)', marginTop: '2px' }}>
+                      Nhập gợi ý thuật toán, phân tích độ phức tạp thời gian/bộ nhớ và code mẫu (hỗ trợ Markdown & code).
+                    </div>
+                  </div>
+
+                  <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', background: currentProb.solutionVisible ? 'rgba(34, 197, 94, 0.15)' : 'var(--bg-surface)', padding: '6px 12px', borderRadius: 'var(--radius-sm)', border: `1px solid ${currentProb.solutionVisible ? 'var(--accent-emerald)' : 'var(--border-subtle)'}` }}>
+                    <input 
+                      type="checkbox"
+                      checked={!!currentProb.solutionVisible}
+                      onChange={(e) => setCurrentProb({ ...currentProb, solutionVisible: e.target.checked })}
+                      style={{ cursor: 'pointer' }}
+                    />
+                    <span style={{ fontSize: '0.78rem', fontWeight: 600, color: currentProb.solutionVisible ? 'var(--accent-emerald)' : 'var(--text-secondary)' }}>
+                      {currentProb.solutionVisible ? '✓ Công khai lời giải cho mọi học sinh' : '🔒 Chỉ hiện cho học sinh đã AC (100đ)'}
+                    </span>
+                  </label>
+                </div>
+
+                <div>
+                  <textarea 
+                    className="input-field" 
+                    rows={8}
+                    style={{ fontFamily: 'var(--font-mono)', fontSize: '0.84rem', resize: 'vertical' }}
+                    placeholder="### Ý tưởng thuật toán:&#10;- Sử dụng Quy hoạch động O(N) / Tham lam / Đồ thị...&#10;&#10;### Phân tích độ phức tạp:&#10;- Thời gian: O(N)&#10;- Không gian: O(1)&#10;&#10;### Mã nguồn tham khảo:&#10;```cpp&#10;#include <bits/stdc++.h>&#10;using namespace std;&#10;...&#10;```"
+                    value={currentProb.solution || ''}
+                    onChange={(e) => setCurrentProb({ ...currentProb, solution: e.target.value })}
+                  />
+                </div>
               </div>
 
               {/* FOOTER ACTIONS */}

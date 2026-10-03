@@ -274,12 +274,12 @@ class Database {
 
       // Write atomically using .tmp and rename to prevent file corruption on sudden crash
       const tmpFile = `${DATA_FILE}.tmp`;
-      fs.writeFileSync(tmpFile, JSON.stringify(cleanData), 'utf8');
+      fs.writeFileSync(tmpFile, JSON.stringify(cleanData, null, 2), 'utf8');
       fs.renameSync(tmpFile, DATA_FILE);
     } catch (err) {
       console.error('Error writing DB file atomically:', err);
       try {
-        fs.writeFileSync(DATA_FILE, JSON.stringify(dataToSave), 'utf8');
+        fs.writeFileSync(DATA_FILE, JSON.stringify(dataToSave, null, 2), 'utf8');
       } catch (fallbackErr) {
         console.error('Fallback DB write also failed:', fallbackErr);
       }
@@ -1522,6 +1522,184 @@ class Database {
     }
     this.save();
     return red;
+  }
+  // ─── ROADMAP METHODS ────────────────────────────────────────────────────────
+  getRoadmapTopics() {
+    if (!this.data.roadmap_topics || this.data.roadmap_topics.length === 0) {
+      this.data.roadmap_topics = [
+        {
+          id: 'topic-1',
+          title: '1. Nhập xuất cơ bản & Phép toán',
+          description: 'Làm quen với cin, cout, các kiểu dữ liệu số nguyên, số thực và các phép toán cơ bản.',
+          level: 'Cơ bản',
+          icon: 'Terminal',
+          order: 1,
+          problemCodes: []
+        },
+        {
+          id: 'topic-2',
+          title: '2. Cấu trúc rẽ nhánh (If - Else)',
+          description: 'Rèn luyện tư duy điều kiện, kiểm tra chẵn lẻ, tìm max/min, tam giác hợp lệ.',
+          level: 'Cơ bản',
+          icon: 'GitFork',
+          order: 2,
+          problemCodes: []
+        },
+        {
+          id: 'topic-3',
+          title: '3. Vòng lặp For / While',
+          description: 'Tính tổng dãy số, giai thừa, ước số, bội số và số nguyên tố.',
+          level: 'Cơ bản',
+          icon: 'Repeat',
+          order: 3,
+          problemCodes: []
+        },
+        {
+          id: 'topic-4',
+          title: '4. Mảng 1 chiều & Kỹ thuật đếm',
+          description: 'Lưu trữ danh sách, tìm kiếm, sắp xếp và đếm tần số xuất hiện.',
+          level: 'Trung cấp',
+          icon: 'Layers',
+          order: 4,
+          problemCodes: []
+        },
+        {
+          id: 'topic-5',
+          title: '5. Xử lý Chuỗi & Ký tự',
+          description: 'Thao tác với string, xâu đối xứng (palindrome), đảo từ, đếm ký tự.',
+          level: 'Trung cấp',
+          icon: 'Code2',
+          order: 5,
+          problemCodes: []
+        },
+        {
+          id: 'topic-6',
+          title: '6. Hàm & Đệ quy',
+          description: 'Tổ chức chương trình module hóa, tính Fibonacci, tháp Hà Nội, UCLN.',
+          level: 'Trung cấp',
+          icon: 'Cpu',
+          order: 6,
+          problemCodes: []
+        },
+        {
+          id: 'topic-7',
+          title: '7. Thuật toán Sắp xếp & Tìm kiếm',
+          description: 'Sort cơ bản, binary search O(log N), tìm kiếm phần tử thỏa mãn điều kiện.',
+          level: 'Nâng cao',
+          icon: 'Search',
+          order: 7,
+          problemCodes: []
+        },
+        {
+          id: 'topic-8',
+          title: '8. Quy hoạch động (Dynamic Programming)',
+          description: 'Bài toán cái túi, dãy con tăng dài nhất (LIS), đường đi ma trận.',
+          level: 'Nâng cao',
+          icon: 'Sparkles',
+          order: 8,
+          problemCodes: []
+        }
+      ];
+      this.save();
+    }
+    return (this.data.roadmap_topics || []).sort((a, b) => (a.order || 0) - (b.order || 0));
+  }
+
+  getRoadmapTopic(id) {
+    return this.getRoadmapTopics().find(t => t.id === id) || null;
+  }
+
+  createRoadmapTopic(topic) {
+    const list = this.getRoadmapTopics();
+    const newTopic = {
+      id: topic.id || newId('topic'),
+      title: topic.title || 'Chủ đề mới',
+      description: topic.description || '',
+      level: topic.level || 'Cơ bản',
+      icon: topic.icon || 'Code2',
+      order: topic.order !== undefined ? Number(topic.order) : (list.length + 1),
+      problemCodes: Array.isArray(topic.problemCodes) ? topic.problemCodes : [],
+      createdAt: new Date().toISOString()
+    };
+    list.push(newTopic);
+    this.data.roadmap_topics = list;
+    this.save();
+    return newTopic;
+  }
+
+  updateRoadmapTopic(id, updates) {
+    const list = this.getRoadmapTopics();
+    const idx = list.findIndex(t => t.id === id);
+    if (idx === -1) return null;
+    list[idx] = {
+      ...list[idx],
+      ...updates,
+      id // preserve ID
+    };
+    if (updates.order !== undefined) {
+      list[idx].order = Number(updates.order);
+    }
+    this.data.roadmap_topics = list;
+    this.save();
+    return list[idx];
+  }
+
+  deleteRoadmapTopic(id) {
+    const list = this.getRoadmapTopics();
+    const filtered = list.filter(t => t.id !== id);
+    if (filtered.length === list.length) return false;
+    this.data.roadmap_topics = filtered;
+    this.save();
+    return true;
+  }
+
+  // ─── STUDENT CUSTOM CONTESTS & TEST GROUNDS ─────────────────────────────────
+  getStudentCustomContests(userId) {
+    this.data.student_custom_contests = this.data.student_custom_contests || [];
+    if (userId) {
+      return this.data.student_custom_contests.filter(c => c.userId === userId);
+    }
+    return this.data.student_custom_contests;
+  }
+
+  getStudentCustomContest(id) {
+    this.data.student_custom_contests = this.data.student_custom_contests || [];
+    return this.data.student_custom_contests.find(c => c.id === id) || null;
+  }
+
+  saveStudentCustomContest(userId, contestData) {
+    this.data.student_custom_contests = this.data.student_custom_contests || [];
+    const id = contestData.id || newId('custom-contest');
+    const existingIdx = this.data.student_custom_contests.findIndex(c => c.id === id);
+
+    const record = {
+      ...(existingIdx >= 0 ? this.data.student_custom_contests[existingIdx] : {}),
+      ...contestData,
+      id,
+      userId,
+      timeLimit: contestData.timeLimit || 1000,
+      memoryLimit: contestData.memoryLimit || 256,
+      testCases: Array.isArray(contestData.testCases) ? contestData.testCases : [],
+      updatedAt: new Date().toISOString()
+    };
+    if (!record.createdAt) record.createdAt = new Date().toISOString();
+
+    if (existingIdx >= 0) {
+      this.data.student_custom_contests[existingIdx] = record;
+    } else {
+      this.data.student_custom_contests.unshift(record);
+    }
+    this.save();
+    return record;
+  }
+
+  deleteStudentCustomContest(id, userId) {
+    this.data.student_custom_contests = this.data.student_custom_contests || [];
+    const initialLen = this.data.student_custom_contests.length;
+    this.data.student_custom_contests = this.data.student_custom_contests.filter(c => c.id !== id || (userId && c.userId !== userId));
+    const deleted = this.data.student_custom_contests.length < initialLen;
+    if (deleted) this.save();
+    return deleted;
   }
 }
 

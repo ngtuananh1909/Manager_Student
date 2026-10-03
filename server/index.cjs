@@ -21,6 +21,7 @@ const queue = require('./queue.cjs');
 const lan = require('./lanDiscovery.cjs');
 const antiCheat = require('./antiCheat.cjs');
 const mammoth = require('mammoth');
+const arena = require('./arena.cjs');
 
 // Read version from package.json dynamically
 const APP_VERSION = (() => {
@@ -71,6 +72,7 @@ const io = new Server(server, {
 });
 
 queue.setSocketIO(io);
+arena.init(io, db, judge);
 
 // Rate limiting & Brute-force protection stores
 const submissionTimestamps = new Map(); // ip/userId -> lastTimestamp
@@ -320,6 +322,51 @@ app.put('/api/problems/:id', requireHost, (req, res) => {
   if (!updated) return res.status(404).json({ error: 'Không tìm thấy bài tập' });
   emitProblemUpdate(updated);
   res.json(updated);
+});
+
+// SOLUTION FOR PROBLEM (Editorial / Algorithm guide / Reference code)
+app.get('/api/problems/:id/solution', (req, res) => {
+  const prob = db.getProblem(req.params.id);
+  if (!prob) return res.status(404).json({ error: 'Không tìm thấy bài tập' });
+
+  // Host can always view
+  if (req.user.role === 'host') {
+    return res.json({ 
+      allowed: true, 
+      solution: prob.solution || '', 
+      solutionVisible: !!prob.solutionVisible,
+      problemCode: prob.code,
+      problemTitle: prob.title
+    });
+  }
+
+  // Student can view if:
+  // 1. Teacher explicitly enabled solutionVisible, OR
+  // 2. Student already has an AC submission for this problem
+  let canView = !!prob.solutionVisible;
+  if (!canView && req.user) {
+    const subs = db.getSubmissions().filter(s => s.userId === req.user.id && (s.problemId === prob.id || s.problemCode === prob.code));
+    const hasAc = subs.some(s => s.status === 'AC' || (s.score && s.score >= (prob.points || 100)));
+    if (hasAc) {
+      canView = true;
+    }
+  }
+
+  if (!canView) {
+    return res.status(403).json({ 
+      allowed: false, 
+      error: 'Lời giải chưa được công bố hoặc bạn cần đạt AC (100 điểm) bài này trước để mở khóa lời giải.',
+      hasAcRequired: true,
+      hasSolution: !!(prob.solution && prob.solution.trim())
+    });
+  }
+
+  res.json({
+    allowed: true,
+    solution: prob.solution || '',
+    problemCode: prob.code,
+    problemTitle: prob.title
+  });
 });
 
 app.delete('/api/problems/:id', requireHost, (req, res) => {
@@ -2327,6 +2374,232 @@ app.put('/api/rewards/redemptions/:id/status', requireHost, (req, res) => {
     res.status(500).json({ error: err.message });
   }
 });
+
+// ─── ROADMAP APIS (LỘ TRÌNH HỌC TẬP THEO CHỦ ĐỀ & BÀI TẬP THỦ CÔNG) ────────
+app.get('/api/roadmap', (req, res) => {
+  try {
+    const topics = db.getRoadmapTopics();
+    const allProblems = db.getProblems();
+    const probMap = new Map(allProblems.map(p => [p.code, p]));
+
+    // Check user's AC submissions if user is logged in
+    const userSubs = req.user ? db.getSubmissions().filter(s => s.userId === req.user.id) : [];
+    const passedCodes = new Set();
+    const bestScores = new Map();
+    userSubs.forEach(s => {
+      const code = s.problemCode;
+      const score = s.score || 0;
+      if (score > (bestScores.get(code) || 0)) {
+        bestScores.set(code, score);
+      }
+      if (s.status === 'AC' || score >= 100) {
+        passedCodes.add(code);
+      }
+    });
+
+    const populated = topics.map(topic => {
+      const exercises = (topic.problemCodes || []).map(code => {
+        const prob = probMap.get(code);
+        if (!prob) {
+          return {
+            code,
+            title: `Bài tập [${code}]`,
+            difficulty: 'Cơ bản',
+            points: 100,
+            isPassed: passedCodes.has(code),
+            userScore: bestScores.get(code) || 0
+          };
+        }
+        return {
+          code: prob.code,
+          title: prob.title,
+          difficulty: prob.difficulty || 'Dễ',
+          points: prob.points || 100,
+          isPassed: passedCodes.has(prob.code),
+          userScore: bestScores.get(prob.code) || 0
+        };
+      });
+
+      const total = exercises.length;
+      const completed = exercises.filter(e => e.isPassed).length;
+      const progressPercent = total > 0 ? Math.round((completed / total) * 100) : 0;
+
+      return {
+        ...topic,
+        exercises,
+        total,
+        completed,
+        progressPercent
+      };
+    });
+
+    res.json(populated);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post('/api/roadmap', requireHost, (req, res) => {
+  try {
+    const created = db.createRoadmapTopic(req.body);
+    res.json(created);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.put('/api/roadmap/:id', requireHost, (req, res) => {
+  try {
+    const updated = db.updateRoadmapTopic(req.params.id, req.body);
+    if (!updated) return res.status(404).json({ error: 'Chủ đề không tồn tại' });
+    res.json(updated);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.delete('/api/roadmap/:id', requireHost, (req, res) => {
+  try {
+    const success = db.deleteRoadmapTopic(req.params.id);
+    if (!success) return res.status(404).json({ error: 'Chủ đề không tồn tại' });
+    res.json({ message: 'Đã xóa chủ đề khỏi lộ trình' });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ─── STUDENT CUSTOM CONTESTS & TEST GROUNDS ─────────────────────────────────
+app.get('/api/student/custom-contests', (req, res) => {
+  try {
+    const list = db.getStudentCustomContests(req.user ? req.user.id : null);
+    res.json(list);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post('/api/student/custom-contests', (req, res) => {
+  try {
+    const saved = db.saveStudentCustomContest(req.user.id, req.body);
+    res.json(saved);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.delete('/api/student/custom-contests/:id', (req, res) => {
+  try {
+    const success = db.deleteStudentCustomContest(req.params.id, req.user.id);
+    if (!success) return res.status(404).json({ error: 'Không tìm thấy kỳ thi tự luyện' });
+    res.json({ message: 'Đã xóa kỳ thi tự luyện' });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post('/api/student/custom-contests/:id/run', async (req, res) => {
+  try {
+    const { code } = req.body;
+    if (!code || !code.trim()) {
+      return res.status(400).json({ error: 'Mã nguồn không được để trống' });
+    }
+
+    const contest = db.getStudentCustomContest(req.params.id);
+    if (!contest) {
+      return res.status(404).json({ error: 'Không tìm thấy kỳ thi tự luyện' });
+    }
+
+    const testCases = (contest.testCases || []).map((tc, idx) => ({
+      id: tc.id || `tc-${idx}`,
+      name: tc.name || `Test #${idx + 1}`,
+      input: tc.input || '',
+      expectedOutput: tc.expectedOutput || '',
+      score: tc.score || Math.round(100 / Math.max(1, (contest.testCases || []).length))
+    }));
+
+    if (testCases.length === 0) {
+      return res.status(400).json({ error: 'Vui lòng thêm ít nhất 1 test case để chạy thử' });
+    }
+
+    const dummyProblem = {
+      id: contest.id,
+      code: 'CUSTOM',
+      title: contest.title,
+      timeLimit: contest.timeLimit || 1000,
+      memoryLimit: contest.memoryLimit || 256,
+      points: 100,
+      testCases
+    };
+
+    const dummySub = {
+      id: `custom-run-${Date.now()}`,
+      userId: req.user.id,
+      code,
+      language: 'cpp'
+    };
+
+    const result = await judge.gradeSubmission(dummySub, dummyProblem);
+
+    // Save last result on contest
+    db.saveStudentCustomContest(req.user.id, {
+      ...contest,
+      lastCode: code,
+      lastRunResult: result
+    });
+
+    res.json(result);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ─── TOURNAMENT ARENA (SWISS STAGE 1V1 ARENA) ───────────────────────────────
+app.get('/api/arena/profile', (req, res) => {
+  try {
+    const profile = arena.getUserArenaProfile(req.user.id);
+    res.json(profile || { rating: 1200, wins: 0, losses: 0, draws: 0, winRate: 0 });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.get('/api/arena/leaderboard', (req, res) => {
+  try {
+    const board = arena.getArenaLeaderboard();
+    res.json(board);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.get('/api/arena/active-match', (req, res) => {
+  try {
+    const matchId = arena.userMatchMap.get(req.user.id);
+    if (!matchId) return res.json({ hasActiveMatch: false });
+    const match = arena.activeMatches.get(matchId);
+    if (!match || match.status !== 'RUNNING') return res.json({ hasActiveMatch: false });
+    res.json({ hasActiveMatch: true, match: arena.sanitizeMatchForPlayer(match, req.user.id) });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ─── STATIC WEB APPLICATION SERVING (BROWSER & CROSS-PLATFORM) ─────────────
+const distDir = path.join(__dirname, '../dist');
+if (fs.existsSync(distDir)) {
+  app.use(express.static(distDir));
+  app.use((req, res, next) => {
+    if (req.method !== 'GET') return next();
+    if (req.path.startsWith('/api') || req.path.startsWith('/socket.io') || req.path.startsWith('/uploads')) {
+      return next();
+    }
+    const indexPath = path.join(distDir, 'index.html');
+    if (fs.existsSync(indexPath)) {
+      return res.sendFile(indexPath);
+    }
+    next();
+  });
+}
 
 // Start Server with graceful EADDRINUSE handling
 function startServer(port = 4000) {
