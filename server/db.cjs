@@ -274,12 +274,12 @@ class Database {
 
       // Write atomically using .tmp and rename to prevent file corruption on sudden crash
       const tmpFile = `${DATA_FILE}.tmp`;
-      fs.writeFileSync(tmpFile, JSON.stringify(cleanData), 'utf8');
+      fs.writeFileSync(tmpFile, JSON.stringify(cleanData, null, 2), 'utf8');
       fs.renameSync(tmpFile, DATA_FILE);
     } catch (err) {
       console.error('Error writing DB file atomically:', err);
       try {
-        fs.writeFileSync(DATA_FILE, JSON.stringify(dataToSave), 'utf8');
+        fs.writeFileSync(DATA_FILE, JSON.stringify(dataToSave, null, 2), 'utf8');
       } catch (fallbackErr) {
         console.error('Fallback DB write also failed:', fallbackErr);
       }

@@ -5,15 +5,21 @@ const assert = require('node:assert/strict');
 const path = require('path');
 const fs = require('fs');
 
-const pool = require('../server/database/pool.cjs');
-const usersRepo = require('../server/database/repos/users.cjs');
-const classesRepo = require('../server/database/repos/classes.cjs');
-const problemsRepo = require('../server/database/repos/problems.cjs');
-const contestsRepo = require('../server/database/repos/contests.cjs');
-const submissionsRepo = require('../server/database/repos/submissions.cjs');
-const leaderboardRepo = require('../server/database/repos/leaderboard.cjs');
+let pool, usersRepo, classesRepo, problemsRepo, contestsRepo, submissionsRepo, leaderboardRepo;
+let pgAvailable = false;
+try {
+  require.resolve('pg');
+  pool = require('../server/database/pool.cjs');
+  usersRepo = require('../server/database/repos/users.cjs');
+  classesRepo = require('../server/database/repos/classes.cjs');
+  problemsRepo = require('../server/database/repos/problems.cjs');
+  contestsRepo = require('../server/database/repos/contests.cjs');
+  submissionsRepo = require('../server/database/repos/submissions.cjs');
+  leaderboardRepo = require('../server/database/repos/leaderboard.cjs');
+  pgAvailable = true;
+} catch (e) {}
 
-test('PostgreSQL Database Repositories Integration Test', async (t) => {
+test('PostgreSQL Database Repositories Integration Test', { skip: !pgAvailable && 'pg module not installed' }, async (t) => {
   const testSuffix = Date.now();
 
   await t.test('1. Test Connection', async () => {
