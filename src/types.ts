@@ -372,3 +372,27 @@ export interface BatchGradeProgress {
   finished?: boolean;
   errorList?: Array<{ submissionId: string; userName: string; problemCode?: string; error: string; status?: Verdict }>;
 }
+
+export interface RoadmapExercise {
+  code: string;
+  title: string;
+  difficulty: string;
+  points: number;
+  isPassed: boolean;
+  userScore?: number;
+}
+
+export interface RoadmapTopic {
+  id: string;
+  title: string;
+  description: string;
+  level: string;
+  icon?: string;
+  order: number;
+  problemCodes: string[];
+  exercises?: RoadmapExercise[];
+  total?: number;
+  completed?: number;
+  progressPercent?: number;
+}
+

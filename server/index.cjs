@@ -2373,6 +2373,99 @@ app.put('/api/rewards/redemptions/:id/status', requireHost, (req, res) => {
   }
 });
 
+// ─── ROADMAP APIS (LỘ TRÌNH HỌC TẬP THEO CHỦ ĐỀ & BÀI TẬP THỦ CÔNG) ────────
+app.get('/api/roadmap', (req, res) => {
+  try {
+    const topics = db.getRoadmapTopics();
+    const allProblems = db.getProblems();
+    const probMap = new Map(allProblems.map(p => [p.code, p]));
+
+    // Check user's AC submissions if user is logged in
+    const userSubs = req.user ? db.getSubmissions().filter(s => s.userId === req.user.id) : [];
+    const passedCodes = new Set();
+    const bestScores = new Map();
+    userSubs.forEach(s => {
+      const code = s.problemCode;
+      const score = s.score || 0;
+      if (score > (bestScores.get(code) || 0)) {
+        bestScores.set(code, score);
+      }
+      if (s.status === 'AC' || score >= 100) {
+        passedCodes.add(code);
+      }
+    });
+
+    const populated = topics.map(topic => {
+      const exercises = (topic.problemCodes || []).map(code => {
+        const prob = probMap.get(code);
+        if (!prob) {
+          return {
+            code,
+            title: `Bài tập [${code}]`,
+            difficulty: 'Cơ bản',
+            points: 100,
+            isPassed: passedCodes.has(code),
+            userScore: bestScores.get(code) || 0
+          };
+        }
+        return {
+          code: prob.code,
+          title: prob.title,
+          difficulty: prob.difficulty || 'Dễ',
+          points: prob.points || 100,
+          isPassed: passedCodes.has(prob.code),
+          userScore: bestScores.get(prob.code) || 0
+        };
+      });
+
+      const total = exercises.length;
+      const completed = exercises.filter(e => e.isPassed).length;
+      const progressPercent = total > 0 ? Math.round((completed / total) * 100) : 0;
+
+      return {
+        ...topic,
+        exercises,
+        total,
+        completed,
+        progressPercent
+      };
+    });
+
+    res.json(populated);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post('/api/roadmap', requireHost, (req, res) => {
+  try {
+    const created = db.createRoadmapTopic(req.body);
+    res.json(created);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.put('/api/roadmap/:id', requireHost, (req, res) => {
+  try {
+    const updated = db.updateRoadmapTopic(req.params.id, req.body);
+    if (!updated) return res.status(404).json({ error: 'Chủ đề không tồn tại' });
+    res.json(updated);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.delete('/api/roadmap/:id', requireHost, (req, res) => {
+  try {
+    const success = db.deleteRoadmapTopic(req.params.id);
+    if (!success) return res.status(404).json({ error: 'Chủ đề không tồn tại' });
+    res.json({ message: 'Đã xóa chủ đề khỏi lộ trình' });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // ─── STATIC WEB APPLICATION SERVING (BROWSER & CROSS-PLATFORM) ─────────────
 const distDir = path.join(__dirname, '../dist');
 if (fs.existsSync(distDir)) {

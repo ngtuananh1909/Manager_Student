@@ -16,6 +16,7 @@ const ContestsView = lazy(() => import('./views/Student/ContestsView').then(m =>
 const SubmissionsHistory = lazy(() => import('./views/Student/SubmissionsHistory').then(m => ({ default: m.SubmissionsHistory })));
 const LeaderboardView = lazy(() => import('./views/Student/LeaderboardView').then(m => ({ default: m.LeaderboardView })));
 const BadgesView = lazy(() => import('./views/Student/BadgesView').then(m => ({ default: m.BadgesView })));
+const RoadmapView = lazy(() => import('./views/Student/RoadmapView').then(m => ({ default: m.RoadmapView })));
 
 const ProblemManager = lazy(() => import('./views/Teacher/ProblemManager').then(m => ({ default: m.ProblemManager })));
 const ContestManager = lazy(() => import('./views/Teacher/ContestManager').then(m => ({ default: m.ContestManager })));
@@ -26,6 +27,7 @@ const ClassManager = lazy(() => import('./views/Teacher/ClassManager').then(m =>
 const StatisticsView = lazy(() => import('./views/Teacher/StatisticsView').then(m => ({ default: m.StatisticsView })));
 const JudgeSettings = lazy(() => import('./views/Teacher/JudgeSettings').then(m => ({ default: m.JudgeSettings })));
 const AchievementsManager = lazy(() => import('./views/Teacher/AchievementsManager').then(m => ({ default: m.AchievementsManager })));
+const RoadmapManager = lazy(() => import('./views/Teacher/RoadmapManager').then(m => ({ default: m.RoadmapManager })));
 
 const ViewLoadingFallback = () => (
   <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '60vh', gap: '16px', color: 'var(--text-secondary)' }}>
@@ -123,6 +125,11 @@ const MainApp: React.FC = () => {
               </ErrorBoundary>
             )}
             {activeTab === 'leaderboard' && <LeaderboardView />}
+            {activeTab === 'roadmap' && (
+              <ErrorBoundary fallbackTitle="Đã xảy ra sự cố trong Lộ Trình">
+                <RoadmapView onSelectProblem={handleSelectProblem} />
+              </ErrorBoundary>
+            )}
             {activeTab === 'submissions' && <SubmissionsHistory />}
             {activeTab === 'badges' && <BadgesView />}
           </div>
@@ -132,6 +139,11 @@ const MainApp: React.FC = () => {
         {role === 'host' && (
           <div key={activeTab} className="view-animated-container" style={{ flex: 1, display: 'flex', flexDirection: 'column', height: '100%', overflow: 'hidden' }}>
             {activeTab === 'problems-manage' && <ProblemManager />}
+            {activeTab === 'roadmap-manage' && (
+              <ErrorBoundary fallbackTitle="Đã xảy ra sự cố trong Quản Lý Lộ Trình">
+                <RoadmapManager />
+              </ErrorBoundary>
+            )}
             {activeTab === 'contests-manage' && (
               <ErrorBoundary fallbackTitle="Đã xảy ra sự cố trong Quản Lý Kỳ Thi">
                 <ContestManager />
