@@ -11,6 +11,9 @@
     "build": "vite build",
     "build:exe": "vite build && electron-builder --win --x64",
     "build:portable": "vite build && electron-builder --win portable --x64",
+    "build:linux": "vite build && electron-builder --linux --x64",
+    "build:appimage": "vite build && electron-builder --linux AppImage --x64",
+    "build:pacman": "vite build && electron-builder --linux pacman --x64",
     "dist": "vite build && electron-builder --win --x64",
     "preview": "vite preview",
     "start": "concurrently -k -p \"[{name}]\" -n \"SERVER,UI\" -c \"cyan,magenta\" \"node server/index.cjs\" \"vite preview\"",
@@ -42,10 +45,36 @@
       "createDesktopShortcut": true,
       "createStartMenuShortcut": true
     },
+    "linux": {
+      "target": [
+        "AppImage",
+        "pacman"
+      ],
+      "category": "Education",
+      "maintainer": "ChauCaoJudge Team <admin@chaucaojudge.lan>",
+      "icon": "build/icon.png",
+      "artifactName": "${productName}-${version}.${ext}"
+    },
+    "pacman": {
+      "depends": [
+        "c-ares",
+        "ffmpeg",
+        "gtk3",
+        "libevent",
+        "libvpx",
+        "libxslt",
+        "libxss",
+        "minizip",
+        "nss",
+        "re2",
+        "snappy",
+        "libnotify"
+      ]
+    },
     "npmRebuild": false
   },
   "keywords": [],
-  "author": "",
+  "author": "ChauCaoJudge Team <admin@chaucaojudge.lan>",
   "license": "ISC",
   "type": "commonjs",
   "dependencies": {

@@ -249,17 +249,32 @@ function downloadUpdate(serverUrl, manifest, destPath, onProgress) {
   });
 }
 
-// Install update (run the NSIS installer, relaunch app, and quit)
+// Install update (run installer/AppImage, relaunch app, and quit)
 function installUpdate(installerPath) {
-  if (process.platform !== 'win32') throw new Error('Cài đặt tự động chỉ hỗ trợ Windows.');
-  // Khởi chạy file installer NSIS độc lập để nâng cấp ứng dụng
-  const child = spawn(installerPath, [], {
-    detached: true,
-    stdio: 'ignore',
-    shell: false
-  });
-  child.unref();
-  setTimeout(() => app.quit(), 500);
+  if (process.platform === 'win32') {
+    const child = spawn(installerPath, [], {
+      detached: true,
+      stdio: 'ignore',
+      shell: false
+    });
+    child.unref();
+    setTimeout(() => app.quit(), 500);
+    return;
+  }
+  if (process.platform === 'linux') {
+    try {
+      fs.chmodSync(installerPath, 0o755);
+    } catch (e) {}
+    const child = spawn(installerPath, [], {
+      detached: true,
+      stdio: 'ignore',
+      shell: false
+    });
+    child.unref();
+    setTimeout(() => app.quit(), 500);
+    return;
+  }
+  throw new Error('Cài đặt tự động chỉ hỗ trợ Windows và Linux.');
 }
 
 
@@ -455,11 +470,12 @@ ipcMain.handle('update:publish-file', async (event) => {
   if (rejection) return rejection;
   if (getSavedRole() !== 'host') return { success: false, error: 'Chỉ máy Host được phát hành cập nhật.' };
   try {
-    // Chỉ cần chọn 1 file .exe — manifest tự động sinh từ metadata
+    // Chỉ cần chọn 1 file installer (.exe, .AppImage, .pkg.tar.zst, ...) — manifest tự động sinh từ metadata
     const result = await dialog.showOpenDialog(mainWindow, {
-      title: 'Chọn file installer ChauCaoJudge_Setup_x.x.x.exe để phát hành',
+      title: 'Chọn file installer để phát hành (ví dụ: ChauCaoJudge-1.3.0.AppImage hoặc ChauCaoJudge_Setup_1.3.0.exe)',
       filters: [
-        { name: 'ChauCaoJudge Installer', extensions: ['exe'] }
+        { name: 'ChauCaoJudge Packages', extensions: ['exe', 'AppImage', 'pacman', 'pkg.tar.zst', 'deb', 'rpm'] },
+        { name: 'Tất cả các file', extensions: ['*'] }
       ],
       properties: ['openFile']
     });
@@ -471,10 +487,10 @@ ipcMain.handle('update:publish-file', async (event) => {
     const installerSource = result.filePaths[0];
     const fileName = path.basename(installerSource);
 
-    // Tự trích version từ tên file (ví dụ: ChauCaoJudge_Setup_1.2.6.exe → 1.2.6)
+    // Tự trích version từ tên file (ví dụ: ChauCaoJudge_Setup_1.2.6.exe hoặc ChauCaoJudge-1.3.0.AppImage → 1.2.6 / 1.3.0)
     const versionMatch = fileName.match(/(\d+\.\d+\.\d+)/);
     if (!versionMatch) {
-      return { success: false, error: 'Không tìm thấy phiên bản trong tên file. Tên file phải có dạng: ChauCaoJudge_Setup_x.x.x.exe' };
+      return { success: false, error: 'Không tìm thấy phiên bản dạng x.y.z trong tên file (ví dụ: ChauCaoJudge-1.3.0.AppImage hoặc ChauCaoJudge_Setup_1.3.0.exe).' };
     }
     const version = versionMatch[1];
 
